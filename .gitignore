@@ -1,0 +1,19 @@
+# Customer's actual values file — they copy from values.example.yaml
+values.yaml
+# (values.sandbox.yaml is intentionally committed — it's Oryo's reference deployment)
+
+# Local env config
+.env
+.env.local
+
+# Helm pull artifacts
+*.tgz
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

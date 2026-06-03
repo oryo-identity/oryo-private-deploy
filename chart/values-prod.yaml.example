@@ -1,0 +1,110 @@
+# Example production values — copy to values-prod.yaml and edit.
+#
+#   helm upgrade --install oryo packages/k8s-helm/chart \
+#     -n oryo --create-namespace \
+#     -f values-prod.yaml
+
+global:
+  imageRegistry: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+  imageTag: v0.1.0
+  imagePullSecrets:
+    - name: ecr-pull-secret
+
+  env:
+    ENV_NAME: prod
+    DOMAIN: oryo.example.com
+    APP_BASE_URL: https://app.oryo.example.com
+    DEFAULT_BUCKET: oryo-prod-object-store
+    SLACK_ERROR_WEBHOOK: https://hooks.slack.com/services/...
+    ORYO_ENTRA_APP_ID: 00000000-0000-0000-0000-000000000000
+
+  db:
+    host: postgres-main.xxxxx.us-east-1.rds.amazonaws.com
+    port: 5432
+    database: platformprod
+    sslmode: require
+
+  # Production: keep secret material out of values. Use External Secrets
+  # Operator / SealedSecrets / CSI driver to manifest the named Secrets,
+  # then reference them here.
+  externalSecrets:
+    SESSION_SECRET:
+      secretName: oryo-session-secret
+      key: value
+    ORYO_ENTRA_APP_SECRET:
+      secretName: oryo-entra-app-secret
+      key: value
+
+serviceAccount:
+  annotations:
+    # IRSA — pods get S3 + Bedrock permissions via this role.
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/oryo-platform-prod
+
+# Bootstrap DB on every install/upgrade. Idempotent — safe to re-run.
+# Helm blocks the rollout until the Job succeeds.
+dbInit:
+  enabled: true
+  mode: hook
+  adminSecret:
+    name: oryo-db-admin            # contains username + password keys
+    userKey: username
+    passwordKey: password
+  passwordSecrets:
+    DASHBOARD_USER_PASSWORD: { secretName: oryo-db-dashboard, key: password }
+    GATEWAY_USER_PASSWORD:   { secretName: oryo-db-gateway,   key: password }
+    WORKER_USER_PASSWORD:    { secretName: oryo-db-worker,    key: password }
+  defaultTenant:
+    name: "Acme Corp"
+    owner: admin@acme.com
+
+dashboard:
+  replicas: 2
+  ingress:
+    enabled: true
+    className: alb
+    host: app.oryo.example.com
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/...
+    tls:
+      enabled: false
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+  pdb:
+    enabled: true
+    minAvailable: 1
+  db:
+    passwordSecret:
+      name: oryo-db-dashboard
+      key: password
+  env:
+    RESEND_API_KEY: re_xxxxxxxxxxxxx
+
+gateway:
+  replicas: 2
+  ingress:
+    enabled: true
+    className: alb
+    host: gateway.oryo.example.com
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/...
+    tls:
+      enabled: false
+  db:
+    passwordSecret:
+      name: oryo-db-gateway
+      key: password
+
+workers:
+  replicas: 1
+  db:
+    passwordSecret:
+      name: oryo-db-worker
+      key: password
