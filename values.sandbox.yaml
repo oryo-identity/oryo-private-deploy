@@ -12,15 +12,18 @@
 #     (see commands at the bottom of this file).
 
 global:
-  imageRegistry: 221759618824.dkr.ecr.us-east-2.amazonaws.com
+  # Pull from Oryo prod ECR (cross-account, granted by scripts/grant-ecr-pull.sh).
+  # us-east-1 even though the cluster runs in us-east-2 — ECR pulls are cross-region.
+  imageRegistry: 831622638566.dkr.ecr.us-east-1.amazonaws.com
   imageTag: latest
   imagePullPolicy: Always
   imagePullSecrets: []
 
   env:
-    ENV_NAME: sandbox
+    ENV_NAME: stage  # constrained to local|dev|stage|prod; stage behaves like prod but keeps the label distinct
     DOMAIN: oryo-pd.click
     APP_BASE_URL: https://app.oryo-pd.click
+    API_BASE_URL: https://api.oryo-pd.click
     DEFAULT_BUCKET: oryo-sandbox-objects-221759618824-us-east-2 # TODO: create this bucket
     # SLACK_ERROR_WEBHOOK omitted — errors stay in pod logs
     # ORYO_ENTRA_APP_ID omitted — Purview DLP not configured for sandbox

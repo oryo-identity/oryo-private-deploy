@@ -17,9 +17,10 @@ global:
   imagePullSecrets: []
 
   env:
-    ENV_NAME: production  # cosmetic; used in logs
+    ENV_NAME: prod  # MUST be one of: local | dev | stage | prod (SharedEnvZ enum)
     DOMAIN: example.com                                # TODO: your domain
     APP_BASE_URL: https://app.example.com              # TODO: https://app.<DOMAIN>
+    API_BASE_URL: https://api.example.com              # TODO: https://api.<DOMAIN> — sensors phone home here
     DEFAULT_BUCKET: oryo-objects-<account>-<region>    # TODO: from setup.sh output
 
     # Optional integrations — omit if not used.

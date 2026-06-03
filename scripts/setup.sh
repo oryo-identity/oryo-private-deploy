@@ -32,6 +32,8 @@ source "$ENV_FILE"
 : "${BUCKET_NAME:?BUCKET_NAME must be set in .env}"
 : "${DB_ADMIN_USER:?DB_ADMIN_USER must be set in .env (RDS superuser)}"
 : "${DB_ADMIN_PASSWORD:?DB_ADMIN_PASSWORD must be set in .env}"
+: "${DB_HOST:?DB_HOST must be set in .env (RDS endpoint)}"
+: "${DB_NAME:?DB_NAME must be set in .env (target database to create if missing)}"
 
 export AWS_PROFILE AWS_REGION
 
@@ -135,7 +137,39 @@ for role in dashboard gateway worker; do
     --from-literal=password="$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
 done
 
-# ----- 5. IngressClass for EKS Auto Mode -----------------------------------
+# ----- 5. Ensure the target database exists --------------------------------
+#
+# Workaround for: dbInit currently assumes DB_NAME exists. See follow-up task
+# "dbInit: create DB_DATABASE if missing". Remove this block once that ships.
+
+log "Ensuring database '$DB_NAME' exists on $DB_HOST..."
+
+# Use a one-shot in-cluster pod (laptops can't reach RDS in private subnets).
+PSQL_POD="psql-bootstrap-$$"
+trap 'kubectl -n "$NAMESPACE" delete pod "$PSQL_POD" --ignore-not-found --wait=false >/dev/null 2>&1 || true' EXIT
+
+kubectl -n "$NAMESPACE" run "$PSQL_POD" \
+  --image=postgres:16-alpine --restart=Never --command -- \
+  sh -c "PGPASSWORD='$DB_ADMIN_PASSWORD' psql 'host=$DB_HOST port=5432 dbname=postgres user=$DB_ADMIN_USER sslmode=require' -tAc \"SELECT 1 FROM pg_database WHERE datname='$DB_NAME'\" | grep -q 1 || PGPASSWORD='$DB_ADMIN_PASSWORD' psql 'host=$DB_HOST port=5432 dbname=postgres user=$DB_ADMIN_USER sslmode=require' -c 'CREATE DATABASE \"$DB_NAME\";'" >/dev/null
+
+kubectl -n "$NAMESPACE" wait --for=condition=Ready pod/"$PSQL_POD" --timeout=60s >/dev/null
+# Wait for the container to actually finish its command
+sleep 5
+LOG=$(kubectl -n "$NAMESPACE" logs "$PSQL_POD" 2>&1 || true)
+kubectl -n "$NAMESPACE" delete pod "$PSQL_POD" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+trap - EXIT
+
+if echo "$LOG" | grep -qi 'CREATE DATABASE'; then
+  log "  database '$DB_NAME' created"
+elif echo "$LOG" | grep -qiE 'error|fatal'; then
+  echo "ERROR creating database '$DB_NAME':" >&2
+  echo "$LOG" >&2
+  exit 1
+else
+  log "  database '$DB_NAME' already exists"
+fi
+
+# ----- 6. IngressClass for EKS Auto Mode -----------------------------------
 
 log "Ensuring IngressClass 'alb' (EKS Auto Mode)..."
 kubectl apply -f - <<EOF >/dev/null
@@ -150,10 +184,8 @@ log "  applied"
 
 # ----- 6. Summary ----------------------------------------------------------
 
+printf "\n\033[1;32m[setup] Done.\033[0m\n\n"
 cat <<EOF
-
-\033[1;32m[setup] Done.\033[0m
-
 Plug these into values.yaml:
 
   serviceAccount.annotations:
