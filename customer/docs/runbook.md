@@ -112,6 +112,13 @@ Output prints the IRSA role ARN — copy that for the next step.
 > database (e.g. `oryo` or `acme`), create it yourself first via your RDS
 > tooling (`CREATE DATABASE oryo;`) and put that name in `values.yaml`.
 
+> **Email note:** `values.example.yaml` enables Resend by default for the
+> dashboard login flow. If you set `RESEND_API_KEY` in `.env`, `setup.sh`
+> creates the matching k8s secret and login codes get emailed. If you leave
+> `RESEND_API_KEY` blank, you MUST also remove the `dashboard.externalSecrets`
+> block from `values.yaml`, otherwise the dashboard pod will fail to start
+> with a missing-secret error.
+
 ## 6. Fill in `values.yaml`
 
 ```bash
