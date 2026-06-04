@@ -9,22 +9,26 @@ Useful for:
 
 This is not a customer doc. Customers usually already have most of this (existing AWS account, cluster, RDS, domain). This is the from-scratch path.
 
+> **Defaults below** are the Oryo sandbox values (account `221759618824`, region `us-east-2`, profile `sandbox`, domain `oryo-pd.click`, cluster `cluster-pd-1`). Tweak the `VARS` block at the top of each step for a different environment.
+
 ---
 
 ## 0. Pre-prep
 
-Confirm:
-
 ```bash
-aws sts get-caller-identity --profile <profile>
-# account ID must match the target sandbox / customer account
+export AWS_PROFILE=sandbox
+export AWS_REGION=us-east-2
+export ACCOUNT_ID=221759618824
+
+aws sts get-caller-identity --query Account --output text
+# Output must equal $ACCOUNT_ID
 ```
 
 You need IAM admin in that account. If you're driving setup for a customer, they need it.
 
 ## 1. Register a domain (Route 53)
 
-Console → **Route 53** → Registered domains → Register domains.
+Console-only step — Route 53 → Registered domains → Register domains.
 
 - Cheapest: `.click` TLD (~$3/yr).
 - Registration auto-creates a matching hosted zone in the same account. **Don't manually create the zone before registration** — duplicates cause delegation issues.
@@ -36,76 +40,87 @@ If the domain is registered elsewhere (e.g. GoDaddy), point its NS records at a 
 
 ## 2. ACM certificate
 
-Request a wildcard cert covering the subdomains the chart will use (`app.`, `gateway.`, `api.`):
-
 ```bash
-DOMAIN=oryo-pd.click  # or whatever you registered
+# ----- vars (sandbox defaults) -----
+export AWS_PROFILE=sandbox
+export AWS_REGION=us-east-2
+export DOMAIN=oryo-pd.click
+# -----------------------------------
 
-aws acm request-certificate \
-  --profile <profile> --region <cluster-region> \
+# Request the wildcard cert
+CERT_ARN=$(aws acm request-certificate \
+  --region "$AWS_REGION" \
   --domain-name "*.${DOMAIN}" \
   --subject-alternative-names "${DOMAIN}" \
   --validation-method DNS \
-  --query CertificateArn --output text
+  --query CertificateArn --output text)
+echo "$CERT_ARN"
 ```
 
-Save the ARN.
+Save the ARN — you'll paste it into `values.yaml` later.
 
-**Validate ownership.** Either via console (easier):
-1. **Certificate Manager** → cluster region in top-right → click the new cert.
+**Validate ownership.** Console (easier):
+1. **Certificate Manager** → top-right region → click the new cert.
 2. "Domains" section → **"Create records in Route 53"** button → confirm.
 3. Wait 5–10 min; status flips to `ISSUED`.
 
-Or via CLI (no console needed):
+Or CLI (no console needed):
 
 ```bash
-CERT_ARN=<arn-from-above>
+# ----- vars -----
+export AWS_PROFILE=sandbox
+export AWS_REGION=us-east-2
+export DOMAIN=oryo-pd.click
+export CERT_ARN=<paste-from-above>
+# ----------------
 
-# Fetch the validation CNAME
-aws acm describe-certificate --profile <profile> --region <cluster-region> \
-  --certificate-arn "$CERT_ARN" \
-  --query 'Certificate.DomainValidationOptions[0].ResourceRecord' --output json
-
-# Then write it into Route 53 (jq massages it into the change-batch format)
-ZONE_ID=$(aws route53 list-hosted-zones-by-name --profile <profile> \
+# Fetch the hosted zone ID for the domain
+ZONE_ID=$(aws route53 list-hosted-zones-by-name \
   --dns-name "$DOMAIN" --query 'HostedZones[0].Id' --output text)
 
-aws acm describe-certificate --profile <profile> --region <cluster-region> \
-  --certificate-arn "$CERT_ARN" \
+# Write the validation CNAME into Route 53
+aws acm describe-certificate --region "$AWS_REGION" --certificate-arn "$CERT_ARN" \
   --query 'Certificate.DomainValidationOptions[0].ResourceRecord' --output json \
   | jq '{Changes:[{Action:"UPSERT",ResourceRecordSet:{Name:.Name,Type:.Type,TTL:60,ResourceRecords:[{Value:.Value}]}}]}' \
-  | aws route53 change-resource-record-sets --profile <profile> \
-      --hosted-zone-id "$ZONE_ID" --change-batch file:///dev/stdin
+  | aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" --change-batch file:///dev/stdin
 ```
 
 Poll for ISSUED:
 
 ```bash
-aws acm describe-certificate --profile <profile> --region <cluster-region> \
-  --certificate-arn "$CERT_ARN" --query 'Certificate.Status'
+aws acm describe-certificate --region "$AWS_REGION" --certificate-arn "$CERT_ARN" \
+  --query 'Certificate.Status'
 ```
 
 ## 3. EKS cluster
 
-If the cluster already exists (typical customer case), skip to verification. If not, create:
+```bash
+# ----- vars (sandbox defaults) -----
+export AWS_PROFILE=sandbox
+export AWS_REGION=us-east-2
+export CLUSTER_NAME=cluster-pd-1
+# -----------------------------------
+```
+
+If the cluster already exists (typical customer case), skip to verify. If not, create:
 
 ```bash
 eksctl create cluster \
-  --profile <profile> --region <region> \
-  --name <cluster-name> \
+  --region "$AWS_REGION" \
+  --name "$CLUSTER_NAME" \
   --enable-auto-mode \
   --node-private-networking false
 ```
 
-Auto Mode is what the customer runbook assumes. Classic node groups are not supported by `setup.sh` today.
+Auto Mode is what the customer runbook + `setup.sh` assume. Classic node groups are not supported by `setup.sh` today.
 
-Verify after creation:
+Verify:
 
 ```bash
-aws eks describe-cluster --profile <profile> --region <region> --name <cluster-name> \
+aws eks describe-cluster --region "$AWS_REGION" --name "$CLUSTER_NAME" \
   --query 'cluster.{Status:status, VpcId:resourcesVpcConfig.vpcId, ClusterSG:resourcesVpcConfig.clusterSecurityGroupId}'
 
-aws eks update-kubeconfig --profile <profile> --region <region> --name <cluster-name>
+aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
 kubectl get nodes
 kubectl get nodepool   # Auto Mode confirmation — should show `general-purpose` + `system`
 ```
@@ -114,24 +129,27 @@ kubectl get nodepool   # Auto Mode confirmation — should show `general-purpose
 
 ## 4. RDS Postgres
 
-If the RDS already exists, skip to verification. If not, console RDS → Create database → PostgreSQL is fine. Settings that matter:
+If the RDS already exists, skip to verify. If not, console RDS → Create database → PostgreSQL. Settings that matter:
 
-- **VPC:** same VPC as the EKS cluster.
+- **VPC:** same VPC as the EKS cluster (saved above).
 - **Subnet group:** include the same subnets the cluster uses.
 - **Public access:** `No` (keep it private).
-- **Security group:** add an inbound rule for port 5432 from the **cluster security group** (the `sg-...` you saved above).
+- **Security group:** add an inbound rule for port 5432 from the **cluster security group** (the `sg-...` from step 3).
 - **Engine version:** Postgres 14+ is fine.
-- **Database name (initial):** can leave blank (default `postgres` ships regardless).
+- **Database name (initial):** leave blank (default `postgres` ships regardless).
 - **Master username / password:** save these — they become `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD` in customer `.env`.
 
 Verify connectivity from inside the cluster (laptops usually can't reach private RDS):
 
 ```bash
-RDS_HOST=<your-rds-endpoint>
-RDS_PASS='<your-master-password>'
+# ----- vars (sandbox defaults) -----
+export RDS_HOST=db-pd-1.cxyccack2h4y.us-east-2.rds.amazonaws.com
+export RDS_USER=postgres
+export RDS_PASS='<your-master-password>'   # 1Password or customer/.env DB_ADMIN_PASSWORD
+# -----------------------------------
 
 kubectl run psql-test --image=postgres:16-alpine --restart=Never --rm -i --command -- \
-  sh -c "PGPASSWORD='$RDS_PASS' psql 'host=$RDS_HOST port=5432 dbname=postgres user=postgres sslmode=require' -c 'SELECT version();'"
+  sh -c "PGPASSWORD='$RDS_PASS' psql 'host=$RDS_HOST port=5432 dbname=postgres user=$RDS_USER sslmode=require' -c 'SELECT version();'"
 ```
 
 Should print the Postgres version. If it hangs / times out, the security group isn't allowing the cluster → RDS path.
