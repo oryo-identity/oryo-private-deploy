@@ -84,10 +84,10 @@ dashboard:
       alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }
-  # Uncomment if you set RESEND_API_KEY in .env (so setup.sh creates the secret).
-  # Without it, login codes are generated but never emailed.
-  # externalSecrets:
-  #   RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
+  # Email login codes via Resend. Requires RESEND_API_KEY in .env so setup.sh
+  # creates the secret. Remove this block if you're skipping email entirely.
+  externalSecrets:
+    RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
 
 gateway:
   replicas: 2
