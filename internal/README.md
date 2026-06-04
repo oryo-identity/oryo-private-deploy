@@ -8,7 +8,8 @@ Oryo-only tooling and reference deployments for the private-deploy offering. Cus
 |---|---|
 | `values.sandbox.yaml` | Reference deployment values for the Oryo sandbox at `app.oryo-pd.click` (AWS account `221759618824`). Treated as our integration test. |
 | `scripts/grant-ecr-pull.sh` | Run from Oryo prod (`831622638566`) once per new customer to grant their AWS account pull access to image repos. Idempotent. |
-| `docs/oryo-onboarding.md` | What Oryo does per-customer. Includes step-by-step rebuild of the sandbox. |
+| `docs/prereq-setup.md` | How to set up the AWS-side prerequisites (domain, ACM cert, EKS cluster, RDS) that `customer/docs/runbook.md` assumes already exist. Used for sandbox builds + customer hand-holding. |
+| `docs/oryo-onboarding.md` | What Oryo does per-customer (ECR grant) + step-by-step rebuild of the sandbox. |
 | `docs/readiness.md` | Honest accounting of what's customer-equivalent vs corners cut. Internal commentary — not for external distribution. |
 
 ## Typical Oryo flows

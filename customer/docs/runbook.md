@@ -2,7 +2,22 @@
 
 End-to-end bootstrap for installing Oryo in your own AWS account. Targets EKS Auto Mode with arm64 (Graviton) nodes.
 
-> **Prerequisite:** Oryo has granted your AWS account ID pull access to its container registry. If you haven't been onboarded yet, contact your Oryo representative.
+---
+
+## Prerequisites — what you bring
+
+These must already exist before you start. The runbook assumes them and won't create them for you.
+
+| Requirement | Notes |
+|---|---|
+| **AWS account** | With SSO + admin access for the account you'll deploy into. |
+| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. arm64 (Graviton) nodes — Auto Mode will provision these automatically once `setup.sh` patches the NodePool. |
+| **Postgres database** | RDS recommended. Reachable from the EKS cluster's VPC on port 5432 (security group rule). We don't create or manage the DB instance; you point us at it. The chart will use the default `postgres` database unless you tell it otherwise. |
+| **Domain + Route 53 hosted zone** | Registered in Route 53, in the same AWS account. Subdomains for `app.`, `gateway.`, `api.` will be added during install. |
+| **ACM certificate** | Wildcard cert for `*.<your-domain>` in the same region as the cluster, in `ISSUED` status. ARN goes into `values.yaml`. |
+| **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo representative if you haven't been onboarded yet. |
+
+The runbook walks you through creating everything else (S3 bucket, IAM role, IngressClass, k8s secrets, helm install, DNS records).
 
 ---
 
@@ -17,72 +32,29 @@ Install locally:
 - `openssl` (system default; used by `setup.sh` to generate secrets)
 - `docker` (optional — only for local image verification)
 
-## 1. AWS SSO
+## 1. Connect
 
 ```bash
-aws configure sso --profile <your-profile>
-# pick the target account + admin role
-# default region: us-east-2 (or wherever your cluster lives)
-
+# Authenticate to AWS
+aws configure sso --profile <your-profile>   # one-time; pick the target account + admin role
 aws sso login --profile <your-profile>
 aws sts get-caller-identity --profile <your-profile>
-```
 
-## 2. Register a domain (Route 53)
-
-Console → **Route 53** → Registered domains → Register domains. Cheapest TLD is `.click` (~$3/yr). Registration auto-creates a matching hosted zone. WHOIS privacy protection is on by default. Domain charges go to the AWS account bill.
-
-**Register the domain in the same account as the rest of the deployment** — cross-account hosted zones complicate cert validation.
-
-## 3. Request an ACM certificate
-
-```bash
-DOMAIN=<your-domain>
-
-aws acm request-certificate \
-  --profile <your-profile> \
-  --region <your-region> \
-  --domain-name "*.${DOMAIN}" \
-  --subject-alternative-names "${DOMAIN}" \
-  --validation-method DNS
-```
-
-Validate ownership via console:
-1. **Certificate Manager** → region selector top-right (must match cluster region) → click the new cert.
-2. "Domains" section → **"Create records in Route 53"** button → confirm.
-3. Wait 5–10 min; status flips to `ISSUED`.
-
-Poll from CLI:
-```bash
-aws acm describe-certificate \
-  --profile <your-profile> --region <your-region> \
-  --certificate-arn <arn> \
-  --query 'Certificate.Status'
-```
-
-Save the cert ARN — goes into `values.yaml`.
-
-## 4. EKS cluster
-
-Assume the cluster already exists. Connect:
-
-```bash
+# Wire kubectl to your EKS cluster
 aws eks list-clusters --profile <your-profile> --region <your-region>
 aws eks update-kubeconfig --profile <your-profile> --region <your-region> --name <cluster-name>
 kubectl get nodes
 ```
 
-**Detect cluster type.** EKS Auto Mode vs classic managed node groups differ significantly. Auto Mode tells:
+Sanity-check the cluster is **EKS Auto Mode**:
 
 ```bash
 kubectl get nodepool 2>/dev/null
-# If this returns rows like `general-purpose` / `system` → Auto Mode.
-# If "no resources" → classic node groups.
+# If this returns rows like `general-purpose` / `system` → Auto Mode. ✓
+# If "no resources" → classic node groups (not currently supported by this runbook).
 ```
 
-This runbook + `setup.sh` are written for **Auto Mode**. For classic node groups you must install the AWS Load Balancer Controller yourself first — out of scope here.
-
-## 5. Run `setup.sh`
+## 2. Run `setup.sh`
 
 Idempotent. Creates / patches:
 
@@ -119,7 +91,7 @@ Output prints the IRSA role ARN — copy that for the next step.
 > block from `values.yaml`, otherwise the dashboard pod will fail to start
 > with a missing-secret error.
 
-## 6. Fill in `values.yaml`
+## 3. Fill in `values.yaml`
 
 ```bash
 cp values.example.yaml values.yaml
@@ -131,12 +103,12 @@ Replace placeholders (search for `TODO`):
 - **`global.env.DEFAULT_BUCKET`** — bucket name from `.env`.
 - **`global.db.host` / `database`** — your RDS endpoint and database name.
 - **`serviceAccount.annotations.eks.amazonaws.com/role-arn`** — IRSA role ARN from `setup.sh`.
-- **`alb.ingress.kubernetes.io/certificate-arn`** — ACM cert ARN from step 3 (3 ingresses use it).
+- **`alb.ingress.kubernetes.io/certificate-arn`** — ACM cert ARN (from prereqs; 3 ingresses use it).
 - **Ingress hostnames** — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
 - **`dbInit.defaultTenant`** — your org name + owner email.
 - **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum constraint). For production deploys use `prod`.
 
-## 7. `helm install`
+## 4. `helm install`
 
 ```bash
 helm install oryo ./chart \
@@ -155,7 +127,7 @@ kubectl -n <NAMESPACE> get pods
 kubectl -n <NAMESPACE> logs job/oryo-oryo-platform-db-init --tail=50
 ```
 
-## 8. Point DNS at the ALBs
+## 5. Point DNS at the ALBs
 
 After install, Auto Mode provisions ALBs (~2–3 min). Get the hostnames:
 
@@ -172,7 +144,7 @@ Create CNAMEs in your Route 53 hosted zone:
 
 Or install [ExternalDNS](https://kubernetes-sigs.github.io/external-dns/) to automate this. CNAMEs propagate in 1–5 min.
 
-## 9. Smoke test
+## 6. Smoke test
 
 ```bash
 curl -I https://app.<DOMAIN>/healthcheck
