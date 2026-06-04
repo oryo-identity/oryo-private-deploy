@@ -134,6 +134,10 @@ for role in dashboard gateway worker; do
   create_secret "oryo-db-$role" \
     --from-literal=password="$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
 done
+# Optional: only create the Resend secret if RESEND_API_KEY is set.
+if [[ -n "${RESEND_API_KEY:-}" ]]; then
+  create_secret oryo-resend-api-key --from-literal=value="$RESEND_API_KEY"
+fi
 
 # ----- 5. IngressClass for EKS Auto Mode -----------------------------------
 

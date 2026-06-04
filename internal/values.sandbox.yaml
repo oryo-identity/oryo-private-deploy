@@ -76,7 +76,8 @@ dashboard:
     passwordSecret:
       name: oryo-db-dashboard
       key: password
-  # RESEND_API_KEY omitted — login codes print to dashboard pod logs
+  externalSecrets:
+    RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
 
 gateway:
   replicas: 1

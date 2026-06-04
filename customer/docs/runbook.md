@@ -176,7 +176,7 @@ curl -I https://api.<DOMAIN>/healthcheck
 
 Open `https://app.<DOMAIN>` in a browser to access the dashboard.
 
-> **Login email:** if you haven't configured `RESEND_API_KEY`, login codes are not sent. You'll need to either set up a Resend account, or query the `login_events` table in Postgres directly. A pluggable email provider (SMTP / SES) is on the roadmap.
+> **Login email:** if you set `RESEND_API_KEY` in `.env` AND uncommented the `dashboard.externalSecrets.RESEND_API_KEY` block in `values.yaml`, login codes are emailed via Resend. Otherwise codes are generated but never delivered — you'll have to SQL the `login_events` table to read them. SMTP / SES support is in flight.
 
 ---
 
