@@ -80,6 +80,8 @@ dashboard:
 
 gateway:
   replicas: 1
+  autoscaling:
+    minReplicas: 1   # sandbox: HPA stays on, just allow scaling down to 1 when idle
   ingress:
     enabled: true
     className: alb

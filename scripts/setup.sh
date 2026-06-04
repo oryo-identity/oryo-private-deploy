@@ -182,7 +182,58 @@ spec:
 EOF
 log "  applied"
 
-# ----- 6. Summary ----------------------------------------------------------
+# ----- 7. EKS Auto Mode: allow arm64 in default NodePool -------------------
+#
+# Auto Mode ships a `general-purpose` NodePool that ONLY provisions amd64
+# instances by default. Oryo images are arm64 (matching prod's Graviton
+# nodes), so without this patch every pod stays Pending with:
+#   incompatible requirements, key kubernetes.io/arch, In [arm64] not in [amd64]
+#
+# Idempotent: re-applying with arm64 already present is a no-op.
+
+if kubectl get nodepool general-purpose >/dev/null 2>&1; then
+  log "Ensuring Auto Mode 'general-purpose' NodePool allows arm64..."
+  CURRENT_ARCH=$(kubectl get nodepool general-purpose -o json \
+    | jq -r '.spec.template.spec.requirements[] | select(.key=="kubernetes.io/arch") | .values | sort | join(",")')
+  if echo "$CURRENT_ARCH" | grep -q arm64; then
+    log "  arm64 already allowed ($CURRENT_ARCH)"
+  else
+    kubectl get nodepool general-purpose -o json \
+      | jq '.spec.template.spec.requirements |= map(if .key == "kubernetes.io/arch" then .values = (.values + ["arm64"] | unique) else . end)
+            | del(.status, .metadata.resourceVersion, .metadata.uid, .metadata.generation, .metadata.creationTimestamp, .metadata.managedFields)' \
+      | kubectl apply -f - >/dev/null
+    log "  patched (now allows arm64 + amd64)"
+  fi
+else
+  log "No Auto Mode NodePool found — assuming classic node group (skip arch patch)."
+fi
+
+# ----- 8. Tag public subnets for ALB auto-discovery ------------------------
+#
+# The EKS Auto Mode ALB controller auto-discovers subnets to place ALBs in by
+# scanning the cluster's VPC for subnets tagged `kubernetes.io/role/elb=1`
+# (internet-facing). Without this, Ingresses sit forever with no ADDRESS and
+# events show:
+#   Failed build model due to couldn't auto-discover subnets
+#
+# We tag public subnets only (MapPublicIpOnLaunch=true). For internal ALBs
+# you'd tag private subnets with kubernetes.io/role/internal-elb=1 — out of
+# scope here.
+
+log "Tagging public subnets for ALB auto-discovery..."
+VPC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+PUBLIC_SUBNETS=$(aws ec2 describe-subnets \
+  --filters "Name=vpc-id,Values=$VPC_ID" "Name=map-public-ip-on-launch,Values=true" \
+  --query 'Subnets[].SubnetId' --output text)
+if [[ -z "$PUBLIC_SUBNETS" ]]; then
+  echo "WARN: no public subnets found in VPC $VPC_ID — ALBs will fail to provision" >&2
+else
+  # shellcheck disable=SC2086
+  aws ec2 create-tags --resources $PUBLIC_SUBNETS --tags Key=kubernetes.io/role/elb,Value=1 >/dev/null
+  log "  tagged: $(echo $PUBLIC_SUBNETS | tr ' ' ',')"
+fi
+
+# ----- 9. Summary ----------------------------------------------------------
 
 printf "\n\033[1;32m[setup] Done.\033[0m\n\n"
 cat <<EOF

@@ -229,11 +229,24 @@ Renders:
 {{- end -}}
 
 {{/*
-Affinity that prefers nodes matching global.nodeArchitecture.
+Affinity that requires nodes matching global.nodeArchitecture.
+
+Defaults to *required* so EKS Auto Mode (which optimizes for cost/availability)
+cannot silently provision a node of the wrong architecture. Set
+`global.nodeArchitectureStrict: false` to fall back to *preferred*.
 */}}
 {{- define "oryo.archAffinity" -}}
 {{- if .Values.global.nodeArchitecture }}
 nodeAffinity:
+  {{- if ne (toString .Values.global.nodeArchitectureStrict) "false" }}
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: kubernetes.io/arch
+            operator: In
+            values:
+              - {{ .Values.global.nodeArchitecture | quote }}
+  {{- else }}
   preferredDuringSchedulingIgnoredDuringExecution:
     - weight: 100
       preference:
@@ -242,5 +255,6 @@ nodeAffinity:
             operator: In
             values:
               - {{ .Values.global.nodeArchitecture | quote }}
+  {{- end }}
 {{- end }}
 {{- end -}}
