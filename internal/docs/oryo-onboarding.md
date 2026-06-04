@@ -28,6 +28,17 @@ The script attaches a repository policy on each Oryo image repo in `us-east-1` (
 
 That's it for onboarding. The customer drives the rest in their own account.
 
+## Offboarding a customer
+
+If a customer cancels, their account is compromised, or they're no longer entitled to pulls, run the same script with `--revoke`:
+
+```bash
+cd ~/Work/oryo-private-deploy
+./internal/scripts/grant-ecr-pull.sh --revoke <customer-account-id> oryo-prod
+```
+
+The script drops the per-account statement from each Oryo image repo's repository policy. If their grant was the last statement on a repo, the policy is removed entirely. Idempotent — re-running is a no-op.
+
 ---
 
 ## Reference: rebuilding the Oryo sandbox from scratch
