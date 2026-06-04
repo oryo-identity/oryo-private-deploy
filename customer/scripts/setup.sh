@@ -207,18 +207,29 @@ fi
 
 printf "\n\033[1;32m[setup] Done.\033[0m\n\n"
 cat <<EOF
-Plug these into values.yaml:
+Values setup.sh created (paste into values.yaml):
 
   serviceAccount.annotations:
     eks.amazonaws.com/role-arn: $ROLE_ARN
 
   global.env.DEFAULT_BUCKET: $BUCKET_NAME
 
-Next:
-  1. Copy values.example.yaml → values.yaml and fill in:
-     - global.env.DOMAIN, APP_BASE_URL, ingress hosts
-     - alb.ingress.kubernetes.io/certificate-arn (ACM cert ARN — request separately)
-     - global.db.host, database (your RDS endpoint)
-  2. helm install oryo ./chart --namespace $NAMESPACE --values values.yaml
+Values you bring (setup.sh doesn't know these — fill from your prereqs):
+
+  global.env.DOMAIN:                     <your apex domain>
+  global.env.APP_BASE_URL:               https://app.<your apex domain>
+  global.env.API_BASE_URL:               https://api.<your apex domain>
+  global.db.host:                        <your-rds-endpoint>.rds.amazonaws.com
+  global.db.database:                    postgres   (or your custom db name)
+  alb.ingress.kubernetes.io/certificate-arn (x3):  arn:aws:acm:<region>:<account>:certificate/...
+  dashboard.ingress.host:                app.<your apex domain>
+  gateway.ingress.host:                  gateway.<your apex domain>
+  api.ingress.host:                      api.<your apex domain>
+  dbInit.defaultTenant.name + owner:     your org name + admin email
+
+Then:
+  cp values.example.yaml values.yaml
+  \$EDITOR values.yaml
+  helm install oryo ./chart --namespace $NAMESPACE --values values.yaml --wait --timeout 15m
 
 EOF
