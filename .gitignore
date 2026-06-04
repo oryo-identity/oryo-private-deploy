@@ -1,8 +1,8 @@
-# Customer's actual values file — they copy from values.example.yaml
-values.yaml
-# (values.sandbox.yaml is intentionally committed — it's Oryo's reference deployment)
+# Customer's actual values file — copied from customer/values.example.yaml
+customer/values.yaml
 
-# Local env config
+# Local env config (customer/scripts/setup.sh reads from customer/.env)
+customer/.env
 .env
 .env.local
 

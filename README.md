@@ -1,79 +1,40 @@
-# Oryo — Private Deployment
+# oryo-private-deploy
 
-Deploy Oryo in your own AWS account + EKS cluster.
+Deployment kit for running Oryo in a customer's own AWS account, plus the internal tooling Oryo uses to manage that offering.
 
-> **Status:** early — this repo is the source of truth for the private-deployment story but is still being hardened against multiple customer environments. Expect breaking changes until v1.0.
+This repo is split by audience:
 
-## What you get
-
-A Helm chart that runs the Oryo platform (dashboard, gateway, API, workers) inside your EKS cluster, pulling container images from Oryo's distribution registry, with TLS-terminated ingress and a Postgres backend you own.
-
-## Prerequisites
-
-You provide:
-
-- AWS account
-- EKS cluster (Auto Mode recommended) in a supported region
-- Postgres database (RDS recommended) reachable from the cluster
-- A domain you control, with a Route 53 hosted zone in the same AWS account
-- An ACM certificate for `*.<your-domain>` in the same region as the cluster
-- Oryo has added your AWS account ID to its ECR repository policies (contact licensing@oryo.io)
-
-Tools on your machine:
-
-- `aws` CLI (v2)
-- `kubectl`
-- `helm` (v3)
-- `eksctl` (only if not using your own IaC for IAM)
-
-## Quick start (5 commands)
-
-```bash
-# 1. Run the AWS prep — creates S3 bucket, IAM role, k8s namespace + secrets
-./scripts/setup.sh
-
-# 2. Copy + edit the values template
-cp values.example.yaml values.yaml
-$EDITOR values.yaml          # fill in domain, cert ARN, role ARN, RDS host
-
-# 3. Add Oryo's chart repo (OCI) and pull the chart
-helm registry login public.ecr.aws  # if not already cached
-helm pull oci://831622638566.dkr.ecr.us-east-1.amazonaws.com/oryo-platform --version <X.Y.Z>
-
-# 4. Install
-helm install oryo ./oryo-platform-<X.Y.Z>.tgz \
-  --namespace oryo --create-namespace \
-  --values values.yaml
-
-# 5. Point DNS at the ALB
-kubectl -n oryo get ingress
-# create CNAMEs in Route 53 for app/gateway/api → ALB hostname
+```
+oryo-private-deploy/
+├── customer/    ← what customers see and run
+└── internal/    ← Oryo-only: sandbox, onboarding scripts, candid docs
 ```
 
-See [docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
+If you're inside Oryo working on the private-deploy story, read both. If you're a customer reading this, the answer is **[customer/README.md](customer/README.md)** — everything you need for your install lives there.
 
-## What `setup.sh` does
+## What's in `customer/`
 
-Codifies the imperative AWS prep so each customer doesn't re-discover it:
+- `chart/` — the Helm chart customers install
+- `values.example.yaml` — sanitized values template
+- `scripts/setup.sh` — idempotent AWS + k8s prep (S3, IAM, IRSA, secrets, IngressClass, NodePool patching, subnet tagging)
+- `docs/runbook.md` — end-to-end install steps + gotchas
+- `LICENSE.md`, `.env.example`
 
-- Creates the S3 object-storage bucket
-- Creates a scoped IAM policy + IRSA role for the workload
-- Creates the k8s namespace, ServiceAccount, and the 5 required Secrets
-- Installs the `alb` IngressClass
+## What's in `internal/`
 
-Idempotent — safe to re-run. Reads from `.env` (see `.env.example`).
+- `values.sandbox.yaml` — Oryo's reference deployment values (sandbox AWS account)
+- `scripts/grant-ecr-pull.sh` — run from Oryo prod to grant a new customer pull access to image repos
+- `docs/oryo-onboarding.md` — what Oryo does per-customer; also rebuild instructions for the sandbox
+- `docs/readiness.md` — honest accounting of what's customer-equivalent vs corners cut
 
-If you prefer your own IaC tool (Terraform / Pulumi / CDK), see [docs/setup-via-iac.md](docs/setup-via-iac.md) — the AWS CLI commands map 1:1.
+## When syncing the chart from `oryo-platform`
 
-## Chart contents
+The chart in `customer/chart/` is sourced from `oryo-platform/packages/k8s-helm/chart/` with one deliberate omission:
 
-`chart/` is sourced from `oryo-platform/packages/k8s-helm/chart/` with one
-deliberate omission: **`templates/backoffice/` is stripped.** Backoffice is
-Oryo's internal admin UI (auth gated by `@oryo.io` Google accounts) and is
-not shipped to customers. When syncing the chart from oryo-platform, remove
-`templates/backoffice/` and the corresponding `backoffice:` block at the
-bottom of `chart/values.yaml`.
+**`templates/backoffice/` and the `backoffice:` values block are stripped.**
+
+Backoffice is Oryo's internal admin UI (auth gated by `@oryo.io` Google accounts) and is not shipped to customers. When syncing the chart, remove both. Eventually this will be automated by a CI publish step (see Linear ENG-101).
 
 ## License
 
-Proprietary. See [LICENSE.md](LICENSE.md). Contact licensing@oryo.io.
+See [customer/LICENSE.md](customer/LICENSE.md). Contact licensing@oryo.io.
