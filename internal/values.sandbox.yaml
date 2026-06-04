@@ -31,7 +31,7 @@ global:
   db:
     host: db-pd-1.cxyccack2h4y.us-east-2.rds.amazonaws.com
     port: 5432
-    database: platformsandbox
+    database: postgres   # RDS default database; no creation needed
     sslmode: require
 
   externalSecrets:

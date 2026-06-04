@@ -30,7 +30,7 @@ global:
   db:
     host: <rds-endpoint>.rds.amazonaws.com             # TODO: your RDS endpoint
     port: 5432
-    database: oryo                                     # dbInit will create this
+    database: postgres                                 # the database must already exist; `postgres` is RDS's default
     sslmode: require
 
   externalSecrets:

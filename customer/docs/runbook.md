@@ -89,10 +89,9 @@ Idempotent. Creates / patches:
 1. S3 bucket (object storage)
 2. IAM policy + IRSA role + bound k8s ServiceAccount
 3. K8s namespace + 5 Secrets (session, db-admin, db-dashboard, db-gateway, db-worker)
-4. Target Postgres database (creates `DB_NAME` if missing)
-5. `alb` IngressClass pointing at Auto Mode's built-in controller
-6. **Patches the Auto Mode `general-purpose` NodePool to allow `arm64`** (default is amd64-only; Oryo images are arm64)
-7. **Tags the cluster VPC's public subnets** with `kubernetes.io/role/elb=1` so the ALB controller can auto-discover them
+4. `alb` IngressClass pointing at Auto Mode's built-in controller
+5. **Patches the Auto Mode `general-purpose` NodePool to allow `arm64`** (default is amd64-only; Oryo images are arm64)
+6. **Tags the cluster VPC's public subnets** with `kubernetes.io/role/elb=1` so the ALB controller can auto-discover them
 
 ```bash
 cd customer
@@ -100,12 +99,18 @@ cd customer
 cp .env.example .env
 $EDITOR .env
 # Fill in: AWS_PROFILE, AWS_REGION, ACCOUNT_ID, CLUSTER_NAME, NAMESPACE,
-# BUCKET_NAME (must be globally unique), DB_HOST, DB_NAME, DB_ADMIN_USER, DB_ADMIN_PASSWORD
+# BUCKET_NAME (must be globally unique), DB_ADMIN_USER, DB_ADMIN_PASSWORD
 
 ./scripts/setup.sh
 ```
 
 Output prints the IRSA role ARN — copy that for the next step.
+
+> **Database note:** `setup.sh` does NOT create the Postgres database. The
+> default `postgres` database that ships with RDS works fine — put `postgres`
+> in `values.yaml` under `global.db.database`. If you'd rather use a named
+> database (e.g. `oryo` or `acme`), create it yourself first via your RDS
+> tooling (`CREATE DATABASE oryo;`) and put that name in `values.yaml`.
 
 ## 6. Fill in `values.yaml`
 
@@ -135,7 +140,7 @@ helm install oryo ./chart \
 
 **Timeout matters.** Auto Mode dynamic node provisioning takes 2–5 min per node, plus image pull + container startup. The dbInit pre-install hook adds another minute. 5 min isn't enough; 10–15 min is safe.
 
-The pre-install hook runs the `dbInit` Job: connects to RDS as the admin user, ensures the database exists, creates the per-service Postgres roles using the passwords from the k8s Secrets, applies schema and RLS policies, seeds the default tenant.
+The pre-install hook runs the `dbInit` Job: connects to RDS as the admin user, creates the per-service Postgres roles using the passwords from the k8s Secrets, applies schema and RLS policies, seeds the default tenant. **The target database must already exist** — use the default `postgres` database or create your own beforehand.
 
 Watch:
 ```bash

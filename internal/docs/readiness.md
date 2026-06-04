@@ -69,7 +69,7 @@ No platform-source-code access required. No build step. No image push. They cons
 |---|---|---|
 | `ENV_NAME` must be `local | dev | stage | prod` (Zod enum). Sandbox uses `stage`. Customer's "acmecorp-prod" would be rejected | One of the 4 values is *good enough* for any single deployment. Crashes silently though — bad customer experience. | Loosen schema in `packages/shared/src/env.ts`. Audit branching on ENV_NAME. Filed. |
 | Dashboard's "Installation" page hardcoded sensor API URL by `ENV_NAME` | Fixed in `oryo-platform` PR #373 (merged). Sandbox's values now set `API_BASE_URL` explicitly. | Done. |
-| `dbInit` assumes `DB_DATABASE` exists. RDS only ships with `postgres` + `rdsadmin` by default. | `setup.sh` works around it by creating the DB via a one-shot psql pod. | Move the create-if-missing into `db-init`'s startup. Filed. |
+| ~~`dbInit` assumes `DB_DATABASE` exists~~ — **resolved by design choice.** Customer provides the database (uses RDS's default `postgres` or creates their own). `setup.sh` no longer touches it; dbInit no longer needs to. | n/a | Done. |
 | Resend is the only email provider. No `RESEND_API_KEY` = login codes never delivered. Sandbox reads them straight out of `login_events`. | Sandbox is single-user, we can SQL the code. Customer cannot. | Add SMTP / SES / pluggable email provider. Filed. |
 
 ### Operational / k8s quirks (Auto Mode-specific, surfaced via sandbox)
@@ -79,7 +79,6 @@ No platform-source-code access required. No build step. No image push. They cons
 | `setup.sh` patches the Auto Mode `general-purpose` NodePool to allow `arm64` (default is amd64 only) | Necessary for customer too — script does it, fully idempotent | Already in `setup.sh`. Document why prominently in customer-facing README. |
 | `setup.sh` tags VPC public subnets with `kubernetes.io/role/elb=1` | Necessary for customer too — script does it | Same — already automated. |
 | `alb.ingress.kubernetes.io/group.name` annotation didn't merge ingresses into a single ALB; we got 3 ALBs | Functional. Slightly more billing (~$60/mo for 2 extra ALBs). | Investigate why Auto Mode's controller didn't honor the group. Filed. |
-| Database creation requires sandbox to have a one-shot pod that can reach RDS | Works fine inside the cluster | Belongs in dbInit; see above |
 
 ### Repo hygiene / process
 
@@ -99,7 +98,7 @@ In order:
    - Strict arch affinity (`requiredDuringScheduling...`) gated by `global.nodeArchitectureStrict` (default true)
    - (Already merged) Configurable `API_BASE_URL` — PR #373
 2. **Publish the chart as an OCI artifact on each `oryo-platform` release.** Push to ECR Public so anonymous `helm pull` works, OR keep private and customers pull via their granted IAM. Customer install line changes from `./chart` to `oci://...`.
-3. **Fix dbInit to create `DB_DATABASE` if missing.** Removes `setup.sh`'s DB-creation block.
+3. ~~Fix dbInit to create `DB_DATABASE` if missing.~~ **Done by design choice** — customer provides the database; default `postgres` works.
 4. **Pluggable email provider** so customers don't need a Resend account. SMTP at minimum.
 5. **Relax `ENV_NAME` enum** so customer names don't crash the platform.
 6. **Real EULA from legal.**
