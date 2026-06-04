@@ -135,14 +135,52 @@ After install, Auto Mode provisions ALBs (~2–3 min). Get the hostnames:
 kubectl -n <NAMESPACE> get ingress
 ```
 
-The `ADDRESS` column shows hostnames like `k8s-...elb.<region>.amazonaws.com`.
+The `ADDRESS` column shows hostnames like `k8s-...elb.<region>.amazonaws.com`. The chart's `alb.ingress.kubernetes.io/group.name` annotation is intended to merge all 3 ingresses into 1 ALB, but Auto Mode currently creates 3 separate ALBs — that's functional, just slightly more billing.
 
-Create CNAMEs in your Route 53 hosted zone:
+You need 3 CNAMEs in your Route 53 hosted zone pointing each subdomain at its ALB:
 - `app.<DOMAIN>` → dashboard's ALB hostname
 - `gateway.<DOMAIN>` → gateway's ALB hostname
 - `api.<DOMAIN>` → api's ALB hostname
 
-Or install [ExternalDNS](https://kubernetes-sigs.github.io/external-dns/) to automate this. CNAMEs propagate in 1–5 min.
+### CLI (recommended)
+
+```bash
+# ----- vars -----
+DOMAIN=<your-domain>
+NAMESPACE=<your-namespace>
+# ----------------
+
+ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name "$DOMAIN" --query 'HostedZones[0].Id' --output text)
+APP_ALB=$(kubectl -n "$NAMESPACE" get ingress oryo-oryo-platform-dashboard -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+GW_ALB=$(kubectl  -n "$NAMESPACE" get ingress oryo-oryo-platform-gateway   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+API_ALB=$(kubectl -n "$NAMESPACE" get ingress oryo-oryo-platform-api       -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+cat > /tmp/dns.json <<EOF
+{"Changes":[
+ {"Action":"UPSERT","ResourceRecordSet":{"Name":"app.$DOMAIN","Type":"CNAME","TTL":60,"ResourceRecords":[{"Value":"$APP_ALB"}]}},
+ {"Action":"UPSERT","ResourceRecordSet":{"Name":"gateway.$DOMAIN","Type":"CNAME","TTL":60,"ResourceRecords":[{"Value":"$GW_ALB"}]}},
+ {"Action":"UPSERT","ResourceRecordSet":{"Name":"api.$DOMAIN","Type":"CNAME","TTL":60,"ResourceRecords":[{"Value":"$API_ALB"}]}}
+]}
+EOF
+
+aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" --change-batch file:///tmp/dns.json
+```
+
+`UPSERT` = create-or-replace, safe to re-run if you tweak something.
+
+### Console alternative
+
+Route 53 → Hosted zones → your zone → **Create record** three times:
+- Record name: `app` / `gateway` / `api` (just the subdomain)
+- Record type: `CNAME`
+- Value: paste the corresponding ALB hostname from `kubectl get ingress`
+- TTL: 60
+
+### Automatic alternative
+
+Install [ExternalDNS](https://kubernetes-sigs.github.io/external-dns/) once; it watches Ingresses and writes Route 53 records automatically. Worth it if you redeploy a lot.
+
+CNAMEs propagate in 1–5 min after creation.
 
 ## 6. Smoke test
 
