@@ -128,7 +128,7 @@ api:
   env:
     SENSOR_EXECUTABLES_BUCKET: binaries-pub-dev-us-east-1-oryo
 
-# backoffice intentionally omitted — chart default is enabled: false
+# backoffice templates stripped from this chart — Oryo internal only, not shipped
 
 # -----------------------------------------------------------------------------
 # Pre-deploy: create the referenced k8s Secrets in the target namespace.

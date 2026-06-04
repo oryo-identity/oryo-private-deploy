@@ -113,6 +113,5 @@ api:
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }
 
-# Backoffice (Oryo-internal admin UI) is off by default in private deployments.
-# backoffice:
-#   enabled: false
+# Backoffice (Oryo-internal admin UI) is not shipped with this chart.
+# The templates/backoffice/ directory is stripped from the customer release.

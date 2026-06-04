@@ -65,6 +65,15 @@ Idempotent — safe to re-run. Reads from `.env` (see `.env.example`).
 
 If you prefer your own IaC tool (Terraform / Pulumi / CDK), see [docs/setup-via-iac.md](docs/setup-via-iac.md) — the AWS CLI commands map 1:1.
 
+## Chart contents
+
+`chart/` is sourced from `oryo-platform/packages/k8s-helm/chart/` with one
+deliberate omission: **`templates/backoffice/` is stripped.** Backoffice is
+Oryo's internal admin UI (auth gated by `@oryo.io` Google accounts) and is
+not shipped to customers. When syncing the chart from oryo-platform, remove
+`templates/backoffice/` and the corresponding `backoffice:` block at the
+bottom of `chart/values.yaml`.
+
 ## License
 
 Proprietary. See [LICENSE.md](LICENSE.md). Contact licensing@oryo.io.
