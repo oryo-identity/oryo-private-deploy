@@ -129,15 +129,82 @@ kubectl get nodepool   # Auto Mode confirmation — should show `general-purpose
 
 ## 4. RDS Postgres
 
-If the RDS already exists, skip to verify. If not, console RDS → Create database → PostgreSQL. Settings that matter:
+If the RDS already exists, skip to verify.
 
-- **VPC:** same VPC as the EKS cluster (saved above).
+### Option A — CLI
+
+```bash
+# ----- vars (sandbox defaults) -----
+export AWS_PROFILE=sandbox
+export AWS_REGION=us-east-2
+export CLUSTER_NAME=cluster-pd-1
+export DB_INSTANCE_ID=db-pd-1
+export DB_ADMIN_USER=postgres
+export DB_ADMIN_PASS='<set-a-strong-password>'    # save → customer/.env DB_ADMIN_PASSWORD
+export DB_INSTANCE_CLASS=db.t4g.micro             # Graviton (arm64), cheapest
+export DB_STORAGE_GB=20
+export DB_ENGINE_VERSION=16                       # 14+ works
+# -----------------------------------
+
+# Pull the cluster's VPC / subnets / SG (from step 3)
+VPC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" \
+  --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+SUBNETS=$(aws eks describe-cluster --name "$CLUSTER_NAME" \
+  --query 'cluster.resourcesVpcConfig.subnetIds' --output json | jq -r '. | join(" ")')
+CLUSTER_SG=$(aws eks describe-cluster --name "$CLUSTER_NAME" \
+  --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' --output text)
+
+# DB subnet group — RDS requires its own grouping resource that points at your subnets
+aws rds create-db-subnet-group \
+  --db-subnet-group-name "${DB_INSTANCE_ID}-subnets" \
+  --db-subnet-group-description "Subnets for $DB_INSTANCE_ID" \
+  --subnet-ids $SUBNETS
+
+# Dedicated RDS security group with inbound 5432 from the cluster SG only
+DB_SG_ID=$(aws ec2 create-security-group \
+  --group-name "${DB_INSTANCE_ID}-sg" \
+  --description "RDS access for $DB_INSTANCE_ID" \
+  --vpc-id "$VPC_ID" \
+  --query 'GroupId' --output text)
+aws ec2 authorize-security-group-ingress \
+  --group-id "$DB_SG_ID" --protocol tcp --port 5432 --source-group "$CLUSTER_SG"
+
+# Create the instance
+aws rds create-db-instance \
+  --db-instance-identifier "$DB_INSTANCE_ID" \
+  --db-instance-class "$DB_INSTANCE_CLASS" \
+  --engine postgres --engine-version "$DB_ENGINE_VERSION" \
+  --master-username "$DB_ADMIN_USER" --master-user-password "$DB_ADMIN_PASS" \
+  --allocated-storage "$DB_STORAGE_GB" \
+  --db-subnet-group-name "${DB_INSTANCE_ID}-subnets" \
+  --vpc-security-group-ids "$DB_SG_ID" \
+  --no-publicly-accessible --no-multi-az \
+  --backup-retention-period 1 \
+  --storage-encrypted --no-deletion-protection
+
+# Wait for it (~5-10 min)
+aws rds wait db-instance-available --db-instance-identifier "$DB_INSTANCE_ID"
+
+# Grab the endpoint
+aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_ID" \
+  --query 'DBInstances[0].Endpoint.Address' --output text
+```
+
+The endpoint that prints is your `DB_HOST` for `customer/values.yaml` (under `global.db.host`). Save the master password for `customer/.env`.
+
+### Option B — Console
+
+RDS → Create database → PostgreSQL. Settings that matter:
+
+- **VPC:** same VPC as the EKS cluster (from step 3).
 - **Subnet group:** include the same subnets the cluster uses.
 - **Public access:** `No` (keep it private).
 - **Security group:** add an inbound rule for port 5432 from the **cluster security group** (the `sg-...` from step 3).
 - **Engine version:** Postgres 14+ is fine.
 - **Database name (initial):** leave blank (default `postgres` ships regardless).
-- **Master username / password:** save these — they become `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD` in customer `.env`.
+- **Master username / password:** save — they become `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD` in customer `.env`.
+
+### Verify (either path)
 
 Verify connectivity from inside the cluster (laptops usually can't reach private RDS):
 
