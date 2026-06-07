@@ -117,9 +117,9 @@ helm install oryo ./chart \
   --wait --timeout 15m
 ```
 
-**Timeout matters.** Auto Mode dynamic node provisioning takes 2–5 min per node, plus image pull + container startup. The dbInit pre-install hook adds another minute. 5 min isn't enough; 10–15 min is safe.
+**Timeout matters.** Auto Mode dynamic node provisioning takes 2–5 min per node, plus image pull + container startup. The dbInit hook adds another minute. 5 min isn't enough; 10–15 min is safe.
 
-The pre-install hook runs the `dbInit` Job: connects to RDS as the admin user, creates the per-service Postgres roles using the passwords from the k8s Secrets, applies schema and RLS policies, seeds the default tenant. **The target database must already exist** — use the default `postgres` database or create your own beforehand.
+The `dbInit` hook (pre-install + pre-upgrade) connects to RDS as the admin user, creates the per-service Postgres roles using the passwords from the k8s Secrets, applies schema and RLS policies, seeds global rules, seeds the default tenant. Everything is idempotent, so it runs on every install and upgrade. **The target database must already exist** — use the default `postgres` database or create your own beforehand.
 
 Watch:
 ```bash
@@ -242,4 +242,4 @@ EKS Auto Mode shifts a lot of plumbing AWS-side. Most of it Just Works™, but t
 ### Helm
 
 - **`--dry-run` prints NOTES.** Don't mistake dry-run output for a successful install. `helm list -A` is the ground truth.
-- **Pre-install hook failure rolls back the release.** When `dbInit` fails, helm cleans up resources and you can't `kubectl logs` after the fact. Either capture logs live, or run with `--no-hooks` to debug the rest, then dbInit separately.
+- **dbInit hook failure fails the install/upgrade.** When `dbInit` fails, helm rolls back and you can't `kubectl logs` after the fact (the hook job is cleaned up). Either capture logs live, or run with `--no-hooks` to debug the rest, then run dbInit separately.
