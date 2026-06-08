@@ -1,36 +1,20 @@
-# Oryo Private Deployment — Internal
+# Reference & Onboarding
 
-Oryo-only tooling and reference deployments for the private-deploy offering. Customers never see this directory.
+Oryo's reference deployment and the onboarding mechanics for the private-deployment offering. These complement the customer install flow in [`../customer/`](../customer/).
 
 ## Contents
 
 | Path | Purpose |
 |---|---|
-| `values.sandbox.yaml` | Reference deployment values for the Oryo sandbox at `app.oryo-pd.click` (AWS account `221759618824`). Treated as our integration test. |
-| `scripts/grant-ecr-pull.sh` | Run from Oryo prod (`831622638566`) once per new customer to grant their AWS account pull access to image repos. Idempotent. |
-| `docs/prereq-setup.md` | How to set up the AWS-side prerequisites (domain, ACM cert, EKS cluster, RDS) that `customer/docs/runbook.md` assumes already exist. Used for sandbox builds + customer hand-holding. |
-| `docs/oryo-onboarding.md` | What Oryo does per-customer (ECR grant) + step-by-step rebuild of the sandbox. |
-| `docs/readiness.md` | Honest accounting of what's customer-equivalent vs corners cut. Internal commentary — not for external distribution. |
+| `docs/prereq-setup.md` | How to set up the AWS-side prerequisites (domain, ACM cert, EKS cluster, RDS) that [`customer/docs/runbook.md`](../customer/docs/runbook.md) assumes already exist. Useful if you're building an environment from scratch. |
+| `docs/oryo-onboarding.md` | The one-time access grant Oryo performs to authorize your AWS account to pull the container images, plus a worked end-to-end example. |
+| `scripts/grant-ecr-pull.sh` | The script Oryo runs (from its registry account) to grant a consumer AWS account pull access to the image repos. Idempotent. Included for transparency. |
+| `values.sandbox.yaml` | A complete, working reference `values` file (Oryo's own sandbox deployment) — a concrete example alongside the sanitized [`customer/values.example.yaml`](../customer/values.example.yaml). |
 
-## Typical Oryo flows
+## How onboarding works
 
-### Onboard a new customer
+1. Oryo grants your AWS account pull access to the image registry (`grant-ecr-pull.sh`).
+2. You follow [`customer/docs/runbook.md`](../customer/docs/runbook.md) in your own account.
+3. If you're standing up the prerequisite infrastructure from scratch (domain, cert, cluster, RDS), [`docs/prereq-setup.md`](docs/prereq-setup.md) walks through it.
 
-See [docs/oryo-onboarding.md](docs/oryo-onboarding.md). One-time per customer. Mostly just running `grant-ecr-pull.sh` and handing them the `customer/` directory.
-
-### Rebuild the sandbox
-
-See the "Reference: rebuilding the Oryo sandbox from scratch" section of [docs/oryo-onboarding.md](docs/oryo-onboarding.md). Used as our integration test before any chart change ships.
-
-### Assess readiness
-
-See [docs/readiness.md](docs/readiness.md) before promising customer milestones. Reflects ground truth, not aspirational state.
-
-## Open work
-
-Tracked in Linear under the [Private Deployment](https://linear.app/oryo/project/private-deployment-5c0bbd4ee8d5) project. Key items:
-
-- ENG-101 — Automate backoffice strip on chart sync
-- ENG-102 — Audit chart for Oryo-internal-only content before public OCI publish
-- ENG-103 — Pre-first-customer punch list (chart, email, db-init, OCI, ENV_NAME, ALB group)
-- ENG-104 — Split this repo into internal vs customer-facing
+See `docs/oryo-onboarding.md` for the full picture.

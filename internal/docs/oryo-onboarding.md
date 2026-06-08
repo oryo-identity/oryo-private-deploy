@@ -41,9 +41,9 @@ The script drops the per-account statement from each Oryo image repo's repositor
 
 ---
 
-## Reference: rebuilding the Oryo sandbox from scratch
+## Reference: a complete worked deployment
 
-The sandbox deployment at `app.oryo-pd.click` is the canonical "did it actually work" integration test for this offering. It lives in AWS account `221759618824` (Oryo-owned, separate from dev `149...` and prod `831...`).
+A full deployment of `app.oryo-pd.click` in a dedicated AWS account, end to end. Use it as a concrete example of the customer flow with every value filled in.
 
 ```bash
 # 0. Make sure your local sandbox-side SSO + kubectl are configured
@@ -85,10 +85,9 @@ curl -I https://gateway.oryo-pd.click/healthcheck
 curl -I https://api.oryo-pd.click/healthcheck
 ```
 
-The sandbox's grant-ECR-pull step (#2) only needs to run once per consumer account (idempotent). Future re-installs skip it.
+The grant-ECR-pull step (#2) only needs to run once per consumer account (idempotent). Future re-installs skip it.
 
 ## Related
 
-- [internal/docs/readiness.md](readiness.md) — honest accounting of what's customer-equivalent vs corners-cut
-- ENG-103 — pre-first-customer punch list
-- ENG-104 — eventual split into two repos
+- [customer/docs/runbook.md](../../customer/docs/runbook.md) — the customer install flow
+- [docs/prereq-setup.md](prereq-setup.md) — building the prerequisite AWS infrastructure from scratch

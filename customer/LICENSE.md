@@ -14,9 +14,3 @@ You may not, without Oryo's prior written consent:
 - Reverse engineer, decompile, or disassemble any compiled artifacts
 
 For licensing inquiries: licensing@oryo.io.
-
----
-
-**Note for Oryo internal:** this is a stub. The real EULA must be drafted by
-legal counsel before any external distribution. Track in:
-TODO(internal): legal review ticket.
