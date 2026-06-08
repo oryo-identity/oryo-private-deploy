@@ -1,0 +1,138 @@
+# Sandbox values — mirrors the shape of a private customer deployment.
+# Account: 221759618824 (us-east-2 / Ohio)
+#
+# TODO before `helm install`:
+#   - DOMAIN: register a domain (cheapest: Route 53 .click ~$3/yr) and replace
+#     `oryo-pd.click` below with the real one.
+#   - ACM cert ARN: request a wildcard cert for *.sandbox.<domain> in us-east-2
+#     and paste the ARN into the ingress annotations.
+#   - IRSA role ARN: create via `eksctl create iamserviceaccount ...` and paste below.
+#   - S3 bucket (DEFAULT_BUCKET): create in us-east-2 and replace placeholder.
+#   - Create the k8s Secrets referenced under `externalSecrets` / `passwordSecrets`
+#     (see commands at the bottom of this file).
+
+global:
+  # Pull from Oryo prod ECR (cross-account, granted by scripts/grant-ecr-pull.sh).
+  # us-east-1 even though the cluster runs in us-east-2 — ECR pulls are cross-region.
+  imageRegistry: 831622638566.dkr.ecr.us-east-1.amazonaws.com
+  imageTag: latest
+  imagePullPolicy: Always
+  imagePullSecrets: []
+
+  env:
+    ENV_NAME: stage  # constrained to local|dev|stage|prod; stage behaves like prod but keeps the label distinct
+    DOMAIN: oryo-pd.click
+    APP_BASE_URL: https://app.oryo-pd.click
+    API_BASE_URL: https://api.oryo-pd.click
+    DEFAULT_BUCKET: oryo-sandbox-objects-221759618824-us-east-2 # TODO: create this bucket
+    # SLACK_ERROR_WEBHOOK omitted — errors stay in pod logs
+    # ORYO_ENTRA_APP_ID omitted — Purview DLP not configured for sandbox
+
+  db:
+    host: db-pd-1.cxyccack2h4y.us-east-2.rds.amazonaws.com
+    port: 5432
+    database: postgres   # RDS default database; no creation needed
+    sslmode: require
+
+  externalSecrets:
+    SESSION_SECRET:
+      secretName: oryo-session-secret
+      key: value
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::221759618824:role/OryoSandboxWorkloadRole
+
+dbInit:
+  enabled: true
+  mode: hook
+  adminSecret:
+    name: oryo-db-admin
+    userKey: username
+    passwordKey: password
+  passwordSecrets:
+    DASHBOARD_USER_PASSWORD: { secretName: oryo-db-dashboard, key: password }
+    GATEWAY_USER_PASSWORD: { secretName: oryo-db-gateway, key: password }
+    WORKER_USER_PASSWORD: { secretName: oryo-db-worker, key: password }
+  defaultTenant:
+    name: 'oryo-sandbox-private-deploy'
+    owner: jtrujillo@oryo.io
+
+dashboard:
+  replicas: 1
+  ingress:
+    enabled: true
+    className: alb
+    host: app.oryo-pd.click
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-2:221759618824:certificate/2752de92-5874-4876-a5bb-d166e56da73f
+      alb.ingress.kubernetes.io/group.name: oryo-sandbox
+      alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
+  db:
+    passwordSecret:
+      name: oryo-db-dashboard
+      key: password
+  externalSecrets:
+    RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
+
+gateway:
+  replicas: 1
+  autoscaling:
+    minReplicas: 1   # sandbox: HPA stays on, just allow scaling down to 1 when idle
+  ingress:
+    enabled: true
+    className: alb
+    host: gateway.oryo-pd.click
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-2:221759618824:certificate/2752de92-5874-4876-a5bb-d166e56da73f
+      alb.ingress.kubernetes.io/group.name: oryo-sandbox
+      alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
+  db:
+    passwordSecret:
+      name: oryo-db-gateway
+      key: password
+
+workers:
+  replicas: 1
+  db:
+    passwordSecret:
+      name: oryo-db-worker
+      key: password
+
+api:
+  enabled: true
+  replicas: 1
+  ingress:
+    enabled: true
+    className: alb
+    host: api.oryo-pd.click
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-2:221759618824:certificate/2752de92-5874-4876-a5bb-d166e56da73f
+      alb.ingress.kubernetes.io/group.name: oryo-sandbox
+      alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
+  db:
+    passwordSecret:
+      name: oryo-db-dashboard
+      key: password
+  env:
+    SENSOR_EXECUTABLES_BUCKET: binaries-pub-dev-us-east-1-oryo
+
+# backoffice templates stripped from this chart — Oryo internal only, not shipped
+
+# -----------------------------------------------------------------------------
+# The referenced k8s Secrets (oryo-session-secret, oryo-db-admin, oryo-db-*)
+# are created by ../customer/scripts/setup.sh from values in customer/.env.
+# Never hardcode real passwords in this file.
+# -----------------------------------------------------------------------------

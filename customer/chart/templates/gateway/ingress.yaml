@@ -1,0 +1,53 @@
+{{- if and .Values.gateway.enabled .Values.gateway.ingress.enabled -}}
+{{- $component := "gateway" -}}
+{{- $svc := .Values.gateway -}}
+{{- $fullName := include "oryo.componentName" (list . $component) -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "oryo.componentLabels" (list . $component) | nindent 4 }}
+  {{- with $svc.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $svc.ingress.className }}
+  ingressClassName: {{ $svc.ingress.className }}
+  {{- end }}
+  {{- if and $svc.ingress.tls $svc.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $svc.ingress.host | quote }}
+        {{- range $svc.ingress.aliases }}
+        - {{ . | quote }}
+        {{- end }}
+      {{- if $svc.ingress.tls.secretName }}
+      secretName: {{ $svc.ingress.tls.secretName }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ $svc.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ $svc.service.port }}
+    {{- range $svc.ingress.aliases }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ $svc.service.port }}
+    {{- end }}
+{{- end }}

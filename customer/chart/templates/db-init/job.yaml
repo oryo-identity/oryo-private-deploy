@@ -1,0 +1,96 @@
+{{- if and .Values.dbInit.enabled (ne .Values.dbInit.mode "disabled") -}}
+{{- $component := "db-init" -}}
+{{- $svc := .Values.dbInit -}}
+{{- if and (ne $svc.mode "manual") (not $svc.adminSecret.name) -}}
+{{- fail "dbInit.adminSecret.name is required when dbInit.mode is 'hook' or 'manual'." -}}
+{{- end -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "oryo.componentName" (list . $component) }}
+  labels:
+    {{- include "oryo.componentLabels" (list . $component) | nindent 4 }}
+  annotations:
+    {{- if eq $svc.mode "hook" }}
+    # Bootstrap + reconcile: creates Postgres roles, applies passwords, ensures
+    # tables, seeds global rules, seeds the default tenant. Every step is
+    # idempotent, so it runs on install AND upgrade — that's how new global
+    # seeds (interception rules, session extractors) reach existing deployments.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    # Delete any prior hook Job before re-creating — avoids immutable-field
+    # conflicts when the release is reinstalled.
+    "helm.sh/hook-delete-policy": before-hook-creation
+    {{- end }}
+spec:
+  backoffLimit: {{ $svc.backoffLimit }}
+  activeDeadlineSeconds: {{ $svc.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ $svc.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "oryo.podLabels" (list . $component $svc) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "oryo.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $component }}
+          image: {{ include "oryo.image" (list . $svc) | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            {{- include "oryo.commonEnv" . | nindent 12 }}
+            - name: APP_NAME
+              value: {{ $component | quote }}
+            # Admin credentials — superuser, only mounted on this Job.
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $svc.adminSecret.name | quote }}
+                  key: {{ default "username" $svc.adminSecret.userKey | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $svc.adminSecret.name | quote }}
+                  key: {{ default "password" $svc.adminSecret.passwordKey | quote }}
+            # Per-service role passwords — same Secrets the runtime services
+            # bind. db-init writes them into Postgres roles via ALTER ROLE.
+            {{- range $envName, $ref := $svc.passwordSecrets }}
+            - name: {{ $envName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ref.secretName | quote }}
+                  key: {{ default "password" $ref.key | quote }}
+            {{- end }}
+            {{- if $svc.defaultTenant.name }}
+            - name: DEFAULT_TENANT_NAME
+              value: {{ $svc.defaultTenant.name | quote }}
+            {{- end }}
+            {{- if $svc.defaultTenant.owner }}
+            - name: DEFAULT_OWNER
+              value: {{ $svc.defaultTenant.owner | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if $svc.affinity }}
+        {{- toYaml $svc.affinity | nindent 8 }}
+        {{- else }}
+        {{- include "oryo.archAffinity" . | nindent 8 }}
+        {{- end }}
+{{- end }}

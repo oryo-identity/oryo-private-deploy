@@ -1,0 +1,17 @@
+apiVersion: v2
+name: oryo-platform
+description: |
+  Helm chart for the Oryo Platform — deploys the gateway, workers, and dashboard
+  services to a Kubernetes cluster.
+type: application
+version: 0.1.0
+appVersion: '0.1.0'
+kubeVersion: '>=1.27.0-0'
+keywords:
+  - oryo
+  - ai-gateway
+  - llm
+  - observability
+maintainers:
+  - name: Oryo Platform
+    url: https://oryo.io

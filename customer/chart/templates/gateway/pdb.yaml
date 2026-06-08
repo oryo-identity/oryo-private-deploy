@@ -1,0 +1,15 @@
+{{- if and .Values.gateway.enabled .Values.gateway.pdb.enabled -}}
+{{- $component := "gateway" -}}
+{{- $svc := .Values.gateway -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "oryo.componentName" (list . $component) }}
+  labels:
+    {{- include "oryo.componentLabels" (list . $component) | nindent 4 }}
+spec:
+  minAvailable: {{ $svc.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "oryo.componentSelectorLabels" (list . $component) | nindent 6 }}
+{{- end }}

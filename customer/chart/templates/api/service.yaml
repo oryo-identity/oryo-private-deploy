@@ -1,0 +1,19 @@
+{{- if .Values.api.enabled -}}
+{{- $component := "api" -}}
+{{- $svc := .Values.api -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "oryo.componentName" (list . $component) }}
+  labels:
+    {{- include "oryo.componentLabels" (list . $component) | nindent 4 }}
+spec:
+  type: {{ $svc.service.type }}
+  ports:
+    - name: http
+      port: {{ $svc.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "oryo.componentSelectorLabels" (list . $component) | nindent 4 }}
+{{- end }}
