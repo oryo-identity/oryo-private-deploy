@@ -197,6 +197,42 @@ Open `https://app.<DOMAIN>` in a browser to access the dashboard.
 
 ---
 
+## 7. Install a sensor (end-to-end verification)
+
+The real proof a deployment works: install a sensor on a device and confirm it intercepts AI traffic using the global rules seeded at install.
+
+1. In the dashboard: **Settings → Installation**. Copy the generated one-liner for your OS. It already includes `SENSOR_CONFIG_URL=https://api.<DOMAIN>/v1/sensor/config` pointing at *your* deployment, plus a registration token.
+2. Run it on the device. Expected output includes a config fetch like:
+   ```
+   Configuration fetched successfully  watch_domains=19  route_rules=37  message_rules=4
+   ```
+   Non-zero counts = your seeded global rules reached the sensor.
+3. **Trust the CA** (the install will tell you if it isn't trusted). Download the CA from **Settings → Installation → Download CA**, then on macOS:
+   ```bash
+   sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/Downloads/oryo-ca.pem
+   ```
+   Fully quit + reopen the browser afterward.
+4. Visit a watched site (e.g. `chatgpt.com`). It should load with **no TLS error** — the sensor's leaf cert chains to the now-trusted CA.
+
+### Sensor / CA gotchas — read this, it's where time gets lost
+
+- **The CA is per-tenant, not per-domain.** `CN=Oryo Sensor Root CA, OU=<tenantId>`. Switching domains is irrelevant; the OU (tenant) is what matters.
+- **The registration token and the CA download MUST be from the same tenant.** If you download the CA while viewing tenant A but install with a token minted under tenant B, the sensor presents leaves signed by B's CA while you trusted A's → `NET::ERR_CERT_AUTHORITY_INVALID`. Confirm they match:
+  ```bash
+  # CA the sensor actually uses (token from config.json):
+  TOKEN=$(sudo python3 -c "import json;print(json.load(open('/Library/Application Support/Oryo/config.json'))['registration']['resource_token'])")
+  curl -fsS -H "Authorization: Bearer $TOKEN" https://api.<DOMAIN>/v1/sensor/ca | openssl x509 -noout -subject
+  # The CA you trusted:
+  openssl x509 -in ~/Downloads/oryo-ca.pem -noout -subject
+  ```
+  The `OU=` must match. If not, trust the one the sensor uses (the curl output above) or re-mint the token from the right tenant.
+- **`security verify-cert` passing ≠ the sensor accepting it.** They can disagree if the sensor fetches a different cert (different tenant). Compare the actual SHA-256, not just "is some Oryo CA trusted."
+- **Re-deploys mint a new CA.** A full teardown/rebuild creates a new tenant + new root CA. Any CA you trusted before is now stale — re-download.
+- **macOS: imported ≠ trusted.** Double-clicking adds to Keychain without a trust setting. Use `add-trusted-cert -r trustRoot` (as above), and restart the browser — it snapshots the trust store at launch.
+- **Firefox uses its own trust store**, not the OS one — import the CA in Firefox settings separately.
+
+---
+
 ## Upgrades
 
 ```bash
