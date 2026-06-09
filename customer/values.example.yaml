@@ -17,7 +17,7 @@ global:
   imagePullSecrets: []
 
   env:
-    ENV_NAME: stage  # one of: local | dev | stage | prod (SharedEnvZ enum). Use `stage` for now — see runbook.md §3.
+    ENV_NAME: stage  # `stage` is the private-deploy value — always use it. `prod` is reserved for Oryo's own SaaS; `dev`/`local` enable developer-only behavior. See customer/docs/runbook.md §3.
     DOMAIN: example.com                                # TODO: your domain
     APP_BASE_URL: https://app.example.com              # TODO: https://app.<DOMAIN>
     API_BASE_URL: https://api.example.com              # TODO: https://api.<DOMAIN> — sensors phone home here

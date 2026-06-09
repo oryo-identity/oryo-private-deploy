@@ -102,7 +102,7 @@ Replace placeholders (search for `TODO`):
 - **`alb.ingress.kubernetes.io/certificate-arn`** — ACM cert ARN (from prereqs; 3 ingresses use it).
 - **Ingress hostnames** — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
 - **`dbInit.defaultTenant`** — your org name + owner email.
-- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum). **For now, set this to `stage`** for all private-deploy installs while the offering is still being hardened — that way private-deploy traffic is distinguishable from Oryo's own `prod` and we can roll back/adjust behavior per environment without disrupting customers. We'll graduate the recommendation to `prod` once the kit is GA.
+- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum). **Set this to `stage`** for every private-deploy install. `stage` is the private-deploy value — it's how the platform code distinguishes customer-managed clusters from Oryo's own infra so we can add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS; `dev` / `local` flip on developer-only behavior like full request/response capture to Postgres. Don't set this to anything else, even at GA.
 
 ## 4. `helm install`
 

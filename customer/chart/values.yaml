@@ -30,7 +30,7 @@ global:
   # Common environment variables (mirror locals.environment_variables in
   # deploy/terraform/locals.tf). Empty values are dropped at render time.
   env:
-    ENV_NAME: prod
+    ENV_NAME: stage # private-deploy chart default — `stage` is the private-deploy value (always). `prod` is reserved for Oryo's own SaaS.
     DOMAIN: '' # e.g. devoryo.com
     APP_BASE_URL: '' # e.g. https://app.devoryo.com
     API_BASE_URL: '' # e.g. https://api.devoryo.com — falls back to https://api.oryo.io in dashboard schema
