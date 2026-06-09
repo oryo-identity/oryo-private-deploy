@@ -23,9 +23,6 @@ global:
     API_BASE_URL: https://api.example.com              # TODO: https://api.<DOMAIN> — sensors phone home here
     DEFAULT_BUCKET: oryo-objects-<account>-<region>    # TODO: from setup.sh output
 
-    # Optional integrations — omit if not used.
-    # SLACK_ERROR_WEBHOOK: ""           # Slack incoming webhook for crash reports
-    # ORYO_ENTRA_APP_ID: ""             # Required only for Microsoft Purview DLP
     # (RESEND_API_KEY is required and lives on dashboard.externalSecrets below.)
 
   db:
