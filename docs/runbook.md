@@ -6,16 +6,16 @@ End-to-end bootstrap for installing Oryo in your own AWS account. Targets EKS Au
 
 ## Prerequisites — what you bring
 
-These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `setup.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[customer/docs/prereqs.md](prereqs.md)**.
+These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `setup.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[docs/prereqs.md](prereqs.md)**.
 
 | Requirement | Notes |
 |---|---|
 | **AWS account** | With SSO + admin access for the account you'll deploy into. |
-| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [customer/docs/prereqs.md §4](prereqs.md). |
-| **S3 bucket, IAM role, subnet tags** | You create these — [customer/docs/prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
-| **Bedrock model access** | Per-region opt-in for Claude 3 Haiku + Nova Micro — [customer/docs/prereqs.md §5](prereqs.md). Optional in the sense the install still succeeds without it, but auto-classification, active discovery, and the DLP policy go dark — see [Bedrock-dependent features](#bedrock-dependent-features). |
-| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [customer/docs/prereqs.md §6](prereqs.md). |
-| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [customer/docs/prereqs.md §7](prereqs.md). |
+| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [docs/prereqs.md §4](prereqs.md). |
+| **S3 bucket, IAM role, subnet tags** | You create these — [docs/prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
+| **Bedrock model access** | Per-region opt-in for Claude 3 Haiku + Nova Micro — [docs/prereqs.md §5](prereqs.md). Optional in the sense the install still succeeds without it, but auto-classification, active discovery, and the DLP policy go dark — see [Bedrock-dependent features](#bedrock-dependent-features). |
+| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [docs/prereqs.md §6](prereqs.md). |
+| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [docs/prereqs.md §7](prereqs.md). |
 | **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images. |
 
 `setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
@@ -29,7 +29,7 @@ These tools need to be installed locally to successfully go through the full flo
 - `aws` CLI (v2) — auth + every AWS-side operation
 - `kubectl` — talk to your EKS cluster
 - `helm` (v3) — install + upgrade the chart
-- `eksctl` — only needed for the eksctl-path IRSA setup in [customer/docs/prereqs.md §2b](prereqs.md) (skip if you create the role manually)
+- `eksctl` — only needed for the eksctl-path IRSA setup in [docs/prereqs.md §2b](prereqs.md) (skip if you create the role manually)
 - `jq` — used by `setup.sh` to inspect Auto Mode NodePools during preflight
 - `openssl` — used by `setup.sh --bootstrap-secrets` to generate session + role passwords (system default works on macOS/Linux)
 - `docker` (optional) — only for local image verification
@@ -58,7 +58,7 @@ kubectl get nodepool 2>/dev/null
 
 ## 2. Provision prerequisites, then run the preflight
 
-The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[customer/docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
+The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
 
 Then run `setup.sh`, which **verifies** everything exists and prints the values you need:
 
@@ -107,7 +107,7 @@ Replace placeholders (search for `TODO`):
 ## 4. `helm install`
 
 ```bash
-helm install oryo ./chart \
+helm install oryo ./oryo-platform \
   --namespace <NAMESPACE> --create-namespace \
   --values values.yaml \
   --wait --timeout 10m
@@ -218,7 +218,7 @@ Download the CA from **Settings → Installation → Download CA**, add it to yo
 ## Upgrades
 
 ```bash
-helm upgrade oryo ./chart \
+helm upgrade oryo ./oryo-platform \
   --namespace <NAMESPACE> \
   --values values.yaml \
   --wait --timeout 10m
@@ -293,7 +293,7 @@ The pod is ephemeral (`--rm`) and never persists the password to disk. Quit with
 
 Standard AWS / k8s / Helm operational gotchas (wrong-account SSO, ACM `PENDING_VALIDATION`, RDS security group reachability for `dbInit`, etc.) aren't repeated here. These are the Oryo-specific quirks that have actually surprised people:
 
-- **Don't patch the built-in `general-purpose` NodePool to add arm64.** Auto Mode reconciles it back to default. Use the dedicated `oryo-arm64` NodePool from [customer/docs/prereqs.md §4](prereqs.md).
+- **Don't patch the built-in `general-purpose` NodePool to add arm64.** Auto Mode reconciles it back to default. Use the dedicated `oryo-arm64` NodePool from [docs/prereqs.md §4](prereqs.md).
 - **Don't install the standalone `aws-load-balancer-controller`.** Auto Mode ships its own ALB controller; the standalone one crashes with `ec2imds GetMetadata` timeouts and fights it for ingress reconciliation. The chart's `IngressClass` already routes to the built-in controller.
 - **`group.name` ingress annotation doesn't merge ALBs in practice.** Chart sets `alb.ingress.kubernetes.io/group.name: oryo` intending one shared ALB across the 3 ingresses; Auto Mode currently provisions one per ingress. Functional, just slightly more billing.
 - **`dbInit` hook failure rolls back the install** and the Job is cleaned up automatically — post-mortem logs are gone. Either stream `kubectl -n <NS> logs job/oryo-oryo-platform-db-init -f` during the install, or use `--no-hooks` to debug the rest separately and run dbInit manually.
@@ -312,8 +312,8 @@ Several gateway/worker code paths call Bedrock (Claude 3 Haiku for classificatio
 | **Enricher** | Enrichment metadata absent. |
 
 Two failure modes look the same in the dashboard (no tags, no discovery) but have different causes:
-- **IAM**: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel` → fix the IRSA policy ([customer/docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa--lets-the-pods-reach-s3--bedrock)).
-- **Model access**: same call returns `AccessDeniedException: You don't have access to the model with the specified model ID` → enable model access in the Bedrock console ([customer/docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
+- **IAM**: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel` → fix the IRSA policy ([docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa--lets-the-pods-reach-s3--bedrock)).
+- **Model access**: same call returns `AccessDeniedException: You don't have access to the model with the specified model ID` → enable model access in the Bedrock console ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
 
 Quick check from inside the cluster:
 

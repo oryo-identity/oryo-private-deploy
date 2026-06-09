@@ -2,7 +2,7 @@
 # Oryo private-deployment preflight.
 #
 # This script CREATES NOTHING in your AWS account. It verifies that the
-# prerequisites from customer/docs/prereqs.md exist and are configured correctly, then
+# prerequisites from docs/prereqs.md exist and are configured correctly, then
 # prints the values you need for values.yaml. If anything is missing it tells
 # you exactly what to create.
 #
@@ -61,7 +61,7 @@ log "S3 object-storage bucket"
 if aws s3api head-bucket --bucket "$BUCKET_NAME" >/dev/null 2>&1; then
   ok "bucket $BUCKET_NAME exists"
 else
-  bad "bucket $BUCKET_NAME not found — see customer/docs/prereqs.md §1"
+  bad "bucket $BUCKET_NAME not found — see docs/prereqs.md §1"
 fi
 
 # ----- 2. IAM role (IRSA) --------------------------------------------------
@@ -71,7 +71,7 @@ if ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --out
   ok "role $ROLE_NAME exists ($ROLE_ARN)"
 else
   ROLE_ARN=""
-  bad "role $ROLE_NAME not found — see customer/docs/prereqs.md §2"
+  bad "role $ROLE_NAME not found — see docs/prereqs.md §2"
 fi
 
 # ----- 3. Public subnets tagged for ALB discovery --------------------------
@@ -83,7 +83,7 @@ if [[ -n "$VPC_ID" ]]; then
     --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:kubernetes.io/role/elb,Values=1" \
     --query 'Subnets[].SubnetId' --output text 2>/dev/null || echo "")
   [[ -n "$TAGGED" ]] && ok "public subnets tagged kubernetes.io/role/elb=1" \
-    || bad "no subnets tagged kubernetes.io/role/elb=1 in $VPC_ID — see customer/docs/prereqs.md §3"
+    || bad "no subnets tagged kubernetes.io/role/elb=1 in $VPC_ID — see docs/prereqs.md §3"
 else
   bad "could not resolve cluster VPC"
 fi
@@ -102,7 +102,7 @@ if kubectl get nodepool >/dev/null 2>&1; then
     | select(((.spec.template.spec.taints // []) | map(select(.effect=="NoSchedule")) | length) == 0)
     | .metadata.name' | head -1)
   [[ -n "$ARM_POOL" ]] && ok "schedulable arm64 NodePool: '$ARM_POOL'" \
-    || bad "no schedulable arm64 NodePool — see customer/docs/prereqs.md §4 (create a dedicated arm64 NodePool)"
+    || bad "no schedulable arm64 NodePool — see docs/prereqs.md §4 (create a dedicated arm64 NodePool)"
 else
   warn "no Auto Mode NodePools (classic node groups) — ensure an arm64 node group exists"
 fi
@@ -113,7 +113,7 @@ fi
 # parser fallback, enricher) to work:
 #   1. The IRSA role's policy grants bedrock:InvokeModel for the two models.
 #      We can't reliably introspect that here — IAM evaluation is non-trivial
-#      (boundaries, SCPs, inline policies). We rely on customer/docs/prereqs.md §2a.
+#      (boundaries, SCPs, inline policies). We rely on docs/prereqs.md §2a.
 #   2. Bedrock model access is enabled in this account+region.
 #
 # We probe (2) with list-foundation-models (region availability) and a
@@ -127,9 +127,9 @@ AVAILABLE=$(aws bedrock list-foundation-models --region "$AWS_REGION" \
   --output text 2>/dev/null || echo "")
 case "$AVAILABLE" in
   *"$HAIKU_ID"*"$NOVA_ID"*|*"$NOVA_ID"*"$HAIKU_ID"*) ok "$HAIKU_ID + $NOVA_ID available in $AWS_REGION" ;;
-  *"$HAIKU_ID"*) bad "$NOVA_ID not available in $AWS_REGION — pick a Bedrock-supported region or set global.env.AWS_REGION (see customer/docs/prereqs.md §5)" ;;
-  *"$NOVA_ID"*)  bad "$HAIKU_ID not available in $AWS_REGION — pick a Bedrock-supported region or set global.env.AWS_REGION (see customer/docs/prereqs.md §5)" ;;
-  *) bad "neither Haiku 3 nor Nova Micro listed in $AWS_REGION — see customer/docs/prereqs.md §5" ;;
+  *"$HAIKU_ID"*) bad "$NOVA_ID not available in $AWS_REGION — pick a Bedrock-supported region or set global.env.AWS_REGION (see docs/prereqs.md §5)" ;;
+  *"$NOVA_ID"*)  bad "$HAIKU_ID not available in $AWS_REGION — pick a Bedrock-supported region or set global.env.AWS_REGION (see docs/prereqs.md §5)" ;;
+  *) bad "neither Haiku 3 nor Nova Micro listed in $AWS_REGION — see docs/prereqs.md §5" ;;
 esac
 
 # Smoke-call Haiku to confirm account opt-in. AccessDeniedException with
@@ -143,7 +143,7 @@ PROBE=$(aws bedrock-runtime converse --region "$AWS_REGION" --model-id "$HAIKU_I
 if [[ -z "$PROBE" ]]; then
   ok "Bedrock converse smoke call to Haiku 3 succeeded"
 elif echo "$PROBE" | grep -q "don't have access to the model"; then
-  bad "Bedrock model access not enabled for Haiku 3 in $AWS_REGION — enable in console (customer/docs/prereqs.md §5)"
+  bad "Bedrock model access not enabled for Haiku 3 in $AWS_REGION — enable in console (docs/prereqs.md §5)"
 elif echo "$PROBE" | grep -q "not authorized to perform: bedrock:InvokeModel"; then
   warn "Your CLI principal lacks bedrock:InvokeModel — pod IRSA may still be fine. Verify the IRSA role's policy includes the §2a Bedrock statement."
 else
@@ -209,7 +209,7 @@ fi
 
 echo
 if [[ "$FAILED" -ne 0 ]]; then
-  printf "\033[1;31m[preflight] Not ready.\033[0m Fix the ✗ items above (see customer/docs/prereqs.md), then re-run.\n"
+  printf "\033[1;31m[preflight] Not ready.\033[0m Fix the ✗ items above (see docs/prereqs.md), then re-run.\n"
   exit 1
 fi
 
@@ -229,6 +229,6 @@ Then fill the rest (domain, RDS host, cert ARN, ingress hosts, default tenant)
 and install:
 
   cp values.example.yaml values.yaml && \$EDITOR values.yaml
-  helm install oryo ./chart --namespace $NAMESPACE --create-namespace --values values.yaml --wait --timeout 15m
+  helm install oryo ./oryo-platform --namespace $NAMESPACE --create-namespace --values values.yaml --wait --timeout 15m
 
 EOF

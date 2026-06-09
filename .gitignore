@@ -1,8 +1,7 @@
-# Customer's actual values file — copied from customer/values.example.yaml
-customer/values.yaml
+# Customer's actual values file — copied from values.example.yaml
+values.yaml
 
-# Local env config (customer/scripts/setup.sh reads from customer/.env)
-customer/.env
+# Local env config (scripts/setup.sh reads from .env)
 .env
 .env.local
 
