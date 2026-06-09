@@ -26,6 +26,7 @@ global:
     # Optional integrations — omit if not used.
     # SLACK_ERROR_WEBHOOK: ""           # Slack incoming webhook for crash reports
     # ORYO_ENTRA_APP_ID: ""             # Required only for Microsoft Purview DLP
+    # (RESEND_API_KEY is required and lives on dashboard.externalSecrets below.)
 
   db:
     host: <rds-endpoint>.rds.amazonaws.com             # TODO: your RDS endpoint
@@ -87,8 +88,9 @@ dashboard:
       alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }
-  # Email login codes via Resend. Requires RESEND_API_KEY in .env so setup.sh
-  # creates the secret. Remove this block if you're skipping email entirely.
+  # Email login codes via Resend — required. RESEND_API_KEY must be set in
+  # .env so setup.sh creates the `oryo-resend-api-key` secret (use your own
+  # Resend key or ask the Oryo team for one).
   externalSecrets:
     RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
 
@@ -124,5 +126,3 @@ api:
     # if Oryo gave you a different one, e.g. air-gap / mirror).
     SENSOR_EXECUTABLES_BUCKET: binaries-pub-prod-us-east-1-oryo
 
-# Backoffice (Oryo-internal admin UI) is not shipped with this chart.
-# The templates/backoffice/ directory is stripped from the customer release.

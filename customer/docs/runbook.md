@@ -72,10 +72,10 @@ It prints a ✓/✗ for each check; if anything's missing it points you at the r
 
 ### K8s secrets
 
-The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db-admin`, `oryo-db-dashboard`, `oryo-db-gateway`, `oryo-db-worker` (+ optional `oryo-resend-api-key`). Two ways:
+The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db-admin`, `oryo-db-dashboard`, `oryo-db-gateway`, `oryo-db-worker`, `oryo-resend-api-key`. Two ways:
 
 - **Bring your own** (ESO / Vault / SealedSecrets / manual `kubectl`) — `setup.sh` verifies they exist.
-- **Let the script generate them** — fill `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD` (and optionally `RESEND_API_KEY`) in `.env`, then:
+- **Let the script generate them** — fill `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD`, and `RESEND_API_KEY` in `.env`, then:
   ```bash
   ./scripts/setup.sh --bootstrap-secrets
   ```
@@ -83,7 +83,7 @@ The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db
 
 > **Database note:** the target Postgres database must already exist (default `postgres` works, or create your own and name it in `values.yaml` → `global.db.database`). dbInit creates the per-service roles + schema, not the database itself.
 
-> **Email note:** `values.example.yaml` enables Resend by default. If you don't set up the `oryo-resend-api-key` secret, remove the `dashboard.externalSecrets` block from `values.yaml`, or the dashboard pod won't start.
+> **Email note:** `RESEND_API_KEY` is required — the dashboard emails login codes via Resend (without it, users can't sign in). Use your own Resend API key (https://resend.com) or ask the Oryo team to provide one for your install.
 
 ## 3. Fill in `values.yaml`
 
@@ -189,7 +189,7 @@ curl -I https://api.<DOMAIN>/healthcheck
 
 Open `https://app.<DOMAIN>` in a browser to access the dashboard.
 
-> **Login email:** if you set `RESEND_API_KEY` in `.env` AND uncommented the `dashboard.externalSecrets.RESEND_API_KEY` block in `values.yaml`, login codes are emailed via Resend. Otherwise codes are generated but never delivered — you'll have to SQL the `login_events` table to read them. SMTP / SES support is in flight.
+> **Login email:** login codes are emailed via Resend using `RESEND_API_KEY` (required, set in `.env`; the chart wires the corresponding `oryo-resend-api-key` secret into the dashboard pod). SMTP / SES support is in flight.
 
 ---
 

@@ -109,12 +109,13 @@ fi
 
 # ----- 5. K8s secrets ------------------------------------------------------
 
-REQUIRED_SECRETS=(oryo-session-secret oryo-db-admin oryo-db-dashboard oryo-db-gateway oryo-db-worker)
+REQUIRED_SECRETS=(oryo-session-secret oryo-db-admin oryo-db-dashboard oryo-db-gateway oryo-db-worker oryo-resend-api-key)
 
 if [[ "$BOOTSTRAP_SECRETS" == true ]]; then
   log "Bootstrapping k8s secrets (--bootstrap-secrets)"
   : "${DB_ADMIN_USER:?set in .env (needed to create oryo-db-admin)}"
   : "${DB_ADMIN_PASSWORD:?set in .env (needed to create oryo-db-admin)}"
+  : "${RESEND_API_KEY:?set in .env (needed to create oryo-resend-api-key — use your own Resend key or ask the Oryo team)}"
   kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
   GENERATED=()
@@ -146,7 +147,7 @@ if [[ "$BOOTSTRAP_SECRETS" == true ]]; then
   mk oryo-db-dashboard   --from-literal=password="$DASH_VAL"
   mk oryo-db-gateway     --from-literal=password="$GW_VAL"
   mk oryo-db-worker      --from-literal=password="$WORK_VAL"
-  [[ -n "${RESEND_API_KEY:-}" ]] && mk oryo-resend-api-key --from-literal=value="$RESEND_API_KEY"
+  mk oryo-resend-api-key --from-literal=value="$RESEND_API_KEY"
 
   if (( ${#GENERATED[@]} > 0 )); then
     warn "Generated random values for: ${GENERATED[*]%%=*}"
