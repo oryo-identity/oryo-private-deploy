@@ -6,15 +6,15 @@ End-to-end bootstrap for installing Oryo in your own AWS account. Targets EKS Au
 
 ## Prerequisites — what you bring
 
-These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `setup.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[prereqs.md](prereqs.md)**.
+These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `setup.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[customer/docs/prereqs.md](prereqs.md)**.
 
 | Requirement | Notes |
 |---|---|
 | **AWS account** | With SSO + admin access for the account you'll deploy into. |
-| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [prereqs.md §4](prereqs.md). |
-| **S3 bucket, IAM role, subnet tags** | You create these — [prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
-| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [prereqs.md §5](prereqs.md). |
-| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [prereqs.md §6](prereqs.md). |
+| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [customer/docs/prereqs.md §4](prereqs.md). |
+| **S3 bucket, IAM role, subnet tags** | You create these — [customer/docs/prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
+| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [customer/docs/prereqs.md §5](prereqs.md). |
+| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [customer/docs/prereqs.md §6](prereqs.md). |
 | **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images. |
 
 `setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
@@ -28,7 +28,7 @@ These tools need to be installed locally to successfully go through the full flo
 - `aws` CLI (v2) — auth + every AWS-side operation
 - `kubectl` — talk to your EKS cluster
 - `helm` (v3) — install + upgrade the chart
-- `eksctl` — only needed for the eksctl-path IRSA setup in [prereqs.md §2b](prereqs.md) (skip if you create the role manually)
+- `eksctl` — only needed for the eksctl-path IRSA setup in [customer/docs/prereqs.md §2b](prereqs.md) (skip if you create the role manually)
 - `jq` — used by `setup.sh` to inspect Auto Mode NodePools during preflight
 - `openssl` — used by `setup.sh --bootstrap-secrets` to generate session + role passwords (system default works on macOS/Linux)
 - `docker` (optional) — only for local image verification
@@ -290,11 +290,9 @@ The pod is ephemeral (`--rm`) and never persists the password to disk. Quit with
 
 ## Gotchas
 
-- **Wrong AWS account via SSO.** Run `aws sts get-caller-identity` before any state-changing command.
-- **ACM cert stuck in `PENDING_VALIDATION`.** Requesting a cert doesn't validate it — add the validation CNAMEs to your Route 53 zone.
-- **Don't patch the built-in `general-purpose` NodePool to add arm64** — Auto Mode reconciles it back to default. Use the dedicated `oryo-arm64` NodePool from [prereqs.md §4](prereqs.md).
-- **Don't install the standalone `aws-load-balancer-controller` on Auto Mode** — the built-in controller handles ALBs; the standalone one crashes with `ec2imds GetMetadata` timeouts.
-- **3 ALBs, not 1.** The chart's `group.name` annotation is intended to share one ALB across ingresses, but Auto Mode currently provisions one per ingress. Functional, just slightly more billing.
-- **`dbInit` hangs** = RDS isn't reachable from the cluster. Allow the cluster SG inbound to port 5432.
-- **`helm --dry-run` ≠ a successful install.** `helm list -A` is the ground truth.
-- **`dbInit` hook failure rolls back the install** and the hook Job is cleaned up — capture logs live during the install, or run with `--no-hooks` to debug separately.
+Standard AWS / k8s / Helm operational gotchas (wrong-account SSO, ACM `PENDING_VALIDATION`, RDS security group reachability for `dbInit`, etc.) aren't repeated here. These are the Oryo-specific quirks that have actually surprised people:
+
+- **Don't patch the built-in `general-purpose` NodePool to add arm64.** Auto Mode reconciles it back to default. Use the dedicated `oryo-arm64` NodePool from [customer/docs/prereqs.md §4](prereqs.md).
+- **Don't install the standalone `aws-load-balancer-controller`.** Auto Mode ships its own ALB controller; the standalone one crashes with `ec2imds GetMetadata` timeouts and fights it for ingress reconciliation. The chart's `IngressClass` already routes to the built-in controller.
+- **`group.name` ingress annotation doesn't merge ALBs in practice.** Chart sets `alb.ingress.kubernetes.io/group.name: oryo` intending one shared ALB across the 3 ingresses; Auto Mode currently provisions one per ingress. Functional, just slightly more billing.
+- **`dbInit` hook failure rolls back the install** and the Job is cleaned up automatically — post-mortem logs are gone. Either stream `kubectl -n <NS> logs job/oryo-oryo-platform-db-init -f` during the install, or use `--no-hooks` to debug the rest separately and run dbInit manually.
