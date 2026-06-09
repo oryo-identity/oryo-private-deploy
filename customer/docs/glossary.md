@@ -59,7 +59,7 @@ The CA private key stays server-side; only leaf certs go to devices.
 
 Oryo's container images live in Oryo's prod ECR (`831622638566.dkr.ecr.us-east-1.amazonaws.com`). For a customer cluster to pull them, Oryo runs `grant-ecr-pull.sh` from the registry account to add the customer's account ID to each repo's `aws_ecr_repository_policy`. This is one-time per customer account.
 
-You send Oryo your AWS account ID + region; Oryo grants pull access to `api`, `dashboard`, `gateway`, `workers`, `db-init`. See `docs/onboarding.md`.
+You send Oryo your AWS account ID + region; Oryo grants pull access to `api`, `dashboard`, `gateway`, `workers`, `db-init`. See `customer/docs/onboarding.md`.
 
 ---
 

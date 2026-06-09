@@ -90,4 +90,4 @@ The grant-ECR-pull step (#2) only needs to run once per consumer account (idempo
 ## Related
 
 - [customer/docs/runbook.md](../../customer/docs/runbook.md) — the customer install flow
-- [docs/prereq-setup.md](prereq-setup.md) — building the prerequisite AWS infrastructure from scratch
+- [internal/docs/prereq-setup.md](prereq-setup.md) — building the prerequisite AWS infrastructure from scratch

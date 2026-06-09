@@ -57,7 +57,7 @@ kubectl get nodepool 2>/dev/null
 
 ## 2. Provision prerequisites, then run the preflight
 
-The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
+The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[customer/docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
 
 Then run `setup.sh`, which **verifies** everything exists and prints the values you need:
 
@@ -245,7 +245,7 @@ No multi-key / overlap window is supported. If user-facing downtime matters, pic
 
 ### Per-service DB role passwords (`oryo-db-{dashboard,gateway,worker}`)
 
-The chart's `dbInit` hook **does not** re-issue `ALTER ROLE … WITH PASSWORD` on existing roles (deliberate — `init-roles.ts` explains why). So rotation requires syncing the Postgres role's password with the new k8s Secret yourself, in this order:
+The chart's `dbInit` hook **does not** re-issue `ALTER ROLE … WITH PASSWORD` on existing roles — re-doing it on every helm upgrade churns the Postgres catalog for no benefit when the k8s Secret is stable, so password rotation is treated as a separate explicit operation. That means rotation requires syncing the Postgres role's password with the new k8s Secret yourself, in this order:
 
 1. Generate the new password.
 2. `ALTER ROLE "oryo-<service>" WITH PASSWORD '<new>'` against RDS (use a debug pod that mounts `oryo-db-admin`, see "Ad-hoc DB access" below).

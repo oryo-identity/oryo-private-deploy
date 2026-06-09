@@ -4,7 +4,7 @@
 #   helm install oryo ./chart --namespace oryo --values values.yaml
 #
 # Anything not overridden falls back to defaults in chart/values.yaml.
-# See docs/runbook.md for the long form.
+# See customer/docs/runbook.md for the long form.
 
 global:
   # ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ global:
 
 serviceAccount:
   # Keep this name — your IAM role's trust policy binds to
-  # system:serviceaccount:<namespace>:oryo-platform (see docs/prereqs.md §2).
+  # system:serviceaccount:<namespace>:oryo-platform (see customer/docs/prereqs.md §2).
   name: oryo-platform
   annotations:
     # TODO: paste the role ARN printed by setup.sh

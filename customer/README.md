@@ -70,11 +70,11 @@ flowchart LR
 - **3 ALBs** terminate HTTPS at `app/api/gateway.<DOMAIN>` (one per ingress; share a wildcard ACM cert).
 - **4 services** run as arm64 pods, each connecting to RDS as its own least-privilege Postgres role (RLS-isolated by tenant), and to S3 via IRSA.
 - **Sensors** send all runtime traffic (intercepted requests, CSRs, config polling) to `gateway.<DOMAIN>` in the customer's account. At install time they hit `api.<DOMAIN>` for the install script, which signed-redirects the actual binary download to Oryo's public sensor-binaries bucket.
-- Term unclear? See [docs/glossary.md](docs/glossary.md).
+- Term unclear? See [customer/docs/glossary.md](docs/glossary.md).
 
 ## Prerequisites
 
-This install kit **creates nothing in your AWS account.** You provision the AWS-side prerequisites yourself (per [docs/prereqs.md](docs/prereqs.md)); `setup.sh` then verifies they exist before install and prints the values you need to drop into `values.yaml`.
+This install kit **creates nothing in your AWS account.** You provision the AWS-side prerequisites yourself (per [customer/docs/prereqs.md](docs/prereqs.md)); `setup.sh` then verifies they exist before install and prints the values you need to drop into `values.yaml`.
 
 You provide:
 
@@ -82,7 +82,7 @@ You provide:
 - Postgres database (RDS recommended) reachable from the cluster
 - A domain you control, with a Route 53 hosted zone in the same AWS account
 - An ACM certificate for `*.<your-domain>` in the same region as the cluster (terminates HTTPS at the ALBs)
-- The AWS-side prerequisites in [docs/prereqs.md](docs/prereqs.md): S3 bucket, IAM policy + IRSA role, public-subnet tags, dedicated arm64 NodePool
+- The AWS-side prerequisites in [customer/docs/prereqs.md](docs/prereqs.md): S3 bucket, IAM policy + IRSA role, public-subnet tags, dedicated arm64 NodePool
 - Oryo has added your AWS account ID to its ECR repository policies (contact your Oryo rep if your AWS account has not been provisioned access to our ECR images)
 
 Tools on your machine:
@@ -97,7 +97,7 @@ Tools on your machine:
 ## Quick start
 
 ```bash
-# 1. Provision the prerequisites in your AWS account per docs/prereqs.md
+# 1. Provision the prerequisites in your AWS account per customer/docs/prereqs.md
 #    (or have Oryo provision them on your behalf).
 
 # 2. Preflight — verifies the prereqs and (with the flag) creates the
@@ -124,7 +124,7 @@ kubectl -n oryo get ingress
 curl -I https://app.<your-domain>/healthcheck
 ```
 
-See [docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
+See [customer/docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
 
 ## What `setup.sh` does
 
@@ -139,7 +139,7 @@ Checks:
 - A schedulable arm64 NodePool exists (Auto Mode `general-purpose` is amd64-only by default — see prereqs.md §4)
 - The 5 required k8s secrets exist in the target namespace
 
-Each `✗` points at the relevant section of [docs/prereqs.md](docs/prereqs.md).
+Each `✗` points at the relevant section of [customer/docs/prereqs.md](docs/prereqs.md).
 
 **Optional secret bootstrap.** Pass `--bootstrap-secrets` and the script generates + creates the 5 k8s secrets for you (session secret, `oryo-db-admin` from `.env`, three randomly-generated db-role passwords). Without the flag it only verifies they exist — bring your own (ESO, Vault, SealedSecrets, manual `kubectl`) if you prefer to manage secrets externally.
 
