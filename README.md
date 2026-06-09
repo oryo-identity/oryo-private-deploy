@@ -1,16 +1,8 @@
 # oryo-private-deploy
 
-Deployment kit for running Oryo in a customer's own AWS account, plus the internal tooling Oryo uses to manage that offering.
+Deployment kit for running Oryo in a customer's own AWS account.
 
-This repo is organized as:
-
-```
-oryo-private-deploy/
-├── customer/    ← the install kit: chart, setup script, values template, runbook
-└── internal/    ← reference deployment + onboarding mechanics
-```
-
-**Start with [customer/README.md](customer/README.md)** — everything you need for your install lives there. `internal/` holds a working reference configuration and the onboarding details.
+**Start with [customer/README.md](customer/README.md)** — everything you need for your install lives there.
 
 ## What's in `customer/`
 
@@ -20,13 +12,6 @@ oryo-private-deploy/
 - `docs/prereqs.md` — the AWS-side prerequisites customers provision before install
 - `docs/runbook.md` — end-to-end install steps + gotchas
 - `LICENSE.md`, `.env.example`
-
-## What's in `internal/`
-
-- `values.sandbox.yaml` — a complete, working reference `values` file
-- `scripts/grant-ecr-pull.sh` — the access grant Oryo runs to authorize your account to pull images
-- `docs/oryo-onboarding.md` — how the image-access grant works, with a worked example
-- `docs/prereq-setup.md` — building the prerequisite AWS infrastructure (domain, cert, cluster, RDS) from scratch
 
 ## License
 
