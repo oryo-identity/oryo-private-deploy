@@ -6,18 +6,19 @@ End-to-end bootstrap for installing Oryo in your own AWS account. Targets EKS Au
 
 ## Prerequisites — what you bring
 
-These must already exist before you start. The runbook assumes them and won't create them for you.
+These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `setup.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[prereqs.md](prereqs.md)**.
 
 | Requirement | Notes |
 |---|---|
 | **AWS account** | With SSO + admin access for the account you'll deploy into. |
-| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. arm64 (Graviton) nodes — Auto Mode will provision these automatically once `setup.sh` patches the NodePool. |
-| **Postgres database** | RDS recommended. Reachable from the EKS cluster's VPC on port 5432 (security group rule). We don't create or manage the DB instance; you point us at it. The chart will use the default `postgres` database unless you tell it otherwise. |
-| **Domain + Route 53 hosted zone** | Registered in Route 53, in the same AWS account. Subdomains for `app.`, `gateway.`, `api.` will be added during install. |
-| **ACM certificate** | Wildcard cert for `*.<your-domain>` in the same region as the cluster, in `ISSUED` status. ARN goes into `values.yaml`. |
+| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [prereqs.md §4](prereqs.md). |
+| **S3 bucket, IAM role, subnet tags** | You create these — [prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
+| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [prereqs.md §5](prereqs.md). |
+| **Domain + Route 53 hosted zone** | Registered in Route 53, in the same AWS account. |
+| **ACM certificate** | Wildcard cert for `*.<your-domain>` in the cluster's region, `ISSUED`. ARN goes into `values.yaml`. |
 | **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo representative if you haven't been onboarded yet. |
 
-The runbook walks you through creating everything else (S3 bucket, IAM role, IngressClass, k8s secrets, helm install, DNS records).
+`setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
 
 ---
 
@@ -54,42 +55,36 @@ kubectl get nodepool 2>/dev/null
 # If "no resources" → classic node groups (not currently supported by this runbook).
 ```
 
-## 2. Run `setup.sh`
+## 2. Provision prerequisites, then run the preflight
 
-Idempotent. Creates / patches:
+The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
 
-1. S3 bucket (object storage)
-2. IAM policy + IRSA role + bound k8s ServiceAccount
-3. K8s namespace + 5 Secrets (session, db-admin, db-dashboard, db-gateway, db-worker)
-4. `alb` IngressClass pointing at Auto Mode's built-in controller
-5. **Patches the Auto Mode `general-purpose` NodePool to allow `arm64`** (default is amd64-only; Oryo images are arm64)
-6. **Tags the cluster VPC's public subnets** with `kubernetes.io/role/elb=1` so the ALB controller can auto-discover them
+Then run `setup.sh`, which **verifies** everything exists and prints the values you need:
 
 ```bash
 cd customer
-
 cp .env.example .env
-$EDITOR .env
-# Fill in: AWS_PROFILE, AWS_REGION, ACCOUNT_ID, CLUSTER_NAME, NAMESPACE,
-# BUCKET_NAME (must be globally unique), DB_ADMIN_USER, DB_ADMIN_PASSWORD
+$EDITOR .env          # AWS_PROFILE, AWS_REGION, ACCOUNT_ID, CLUSTER_NAME, NAMESPACE, BUCKET_NAME
 
-./scripts/setup.sh
+./scripts/setup.sh    # preflight — checks bucket, IAM role, subnet tags, arm64, secrets
 ```
 
-Output prints the IRSA role ARN — copy that for the next step.
+It prints a ✓/✗ for each check; if anything's missing it points you at the right section of `prereqs.md`. Once all green, it prints the role ARN + bucket name for `values.yaml`.
 
-> **Database note:** `setup.sh` does NOT create the Postgres database. The
-> default `postgres` database that ships with RDS works fine — put `postgres`
-> in `values.yaml` under `global.db.database`. If you'd rather use a named
-> database (e.g. `oryo` or `acme`), create it yourself first via your RDS
-> tooling (`CREATE DATABASE oryo;`) and put that name in `values.yaml`.
+### K8s secrets
 
-> **Email note:** `values.example.yaml` enables Resend by default for the
-> dashboard login flow. If you set `RESEND_API_KEY` in `.env`, `setup.sh`
-> creates the matching k8s secret and login codes get emailed. If you leave
-> `RESEND_API_KEY` blank, you MUST also remove the `dashboard.externalSecrets`
-> block from `values.yaml`, otherwise the dashboard pod will fail to start
-> with a missing-secret error.
+The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db-admin`, `oryo-db-dashboard`, `oryo-db-gateway`, `oryo-db-worker` (+ optional `oryo-resend-api-key`). Two ways:
+
+- **Bring your own** (ESO / Vault / SealedSecrets / manual `kubectl`) — `setup.sh` verifies they exist.
+- **Let the script generate them** — fill `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD` (and optionally `RESEND_API_KEY`) in `.env`, then:
+  ```bash
+  ./scripts/setup.sh --bootstrap-secrets
+  ```
+  This generates the random ones (session + per-service DB passwords) and creates `oryo-db-admin` from your `.env`. Re-running is idempotent.
+
+> **Database note:** the target Postgres database must already exist (default `postgres` works, or create your own and name it in `values.yaml` → `global.db.database`). dbInit creates the per-service roles + schema, not the database itself.
+
+> **Email note:** `values.example.yaml` enables Resend by default. If you don't set up the `oryo-resend-api-key` secret, remove the `dashboard.externalSecrets` block from `values.yaml`, or the dashboard pod won't start.
 
 ## 3. Fill in `values.yaml`
 
@@ -112,10 +107,12 @@ Replace placeholders (search for `TODO`):
 
 ```bash
 helm install oryo ./chart \
-  --namespace <NAMESPACE> \
+  --namespace <NAMESPACE> --create-namespace \
   --values values.yaml \
   --wait --timeout 15m
 ```
+
+> If you bootstrapped secrets with `setup.sh --bootstrap-secrets`, the namespace already exists — `--create-namespace` is a harmless no-op.
 
 **Timeout matters.** Auto Mode dynamic node provisioning takes 2–5 min per node, plus image pull + container startup. The dbInit hook adds another minute. 5 min isn't enough; 10–15 min is safe.
 

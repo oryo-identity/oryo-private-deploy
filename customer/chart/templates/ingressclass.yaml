@@ -1,0 +1,16 @@
+{{- if .Values.global.createIngressClass }}
+# IngressClass routing to EKS Auto Mode's built-in ALB controller.
+# Set global.createIngressClass=false if the class already exists in your
+# cluster, or if you're not on Auto Mode (and manage your own controller).
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: {{ .Values.global.ingressClassName | default "alb" }}
+  labels:
+    {{- include "oryo.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-20"
+spec:
+  controller: eks.amazonaws.com/alb
+{{- end }}

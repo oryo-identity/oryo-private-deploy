@@ -40,6 +40,9 @@ global:
     # Add ORYO_ENTRA_APP_SECRET / RESEND_API_KEY / etc. here if you use them.
 
 serviceAccount:
+  # Keep this name — your IAM role's trust policy binds to
+  # system:serviceaccount:<namespace>:oryo-platform (see docs/prereqs.md §2).
+  name: oryo-platform
   annotations:
     # TODO: paste the role ARN printed by setup.sh
     eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/OryoWorkloadRole

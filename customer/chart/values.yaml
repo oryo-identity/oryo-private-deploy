@@ -14,6 +14,11 @@ global:
 
   nodeArchitecture: arm64
 
+  # Create the `alb` IngressClass (EKS Auto Mode's built-in controller).
+  # Set false if the class already exists in your cluster.
+  createIngressClass: true
+  ingressClassName: alb
+
   # Extra pod labels merged onto every workload's pod template. Required for
   # cloud workload-identity bindings that select pods by label, e.g. AKS:
   #   podLabels:
