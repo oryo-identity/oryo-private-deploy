@@ -33,7 +33,8 @@ The pods assume an IAM role via IRSA. You create the **role**; the Helm chart cr
 
 ### 2a. Permission policy — S3 access scoped to your bucket
 
-```json
+```bash
+cat > /tmp/oryo-workload-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -45,7 +46,14 @@ The pods assume an IAM role via IRSA. You create the **role**; the Helm chart cr
     ]
   }]
 }
+EOF
+
+aws iam create-policy \
+  --policy-name OryoWorkloadPolicy \
+  --policy-document file:///tmp/oryo-workload-policy.json
 ```
+
+This prints the policy ARN (`arn:aws:iam::<ACCOUNT_ID>:policy/OryoWorkloadPolicy`); you'll plug it into §2b.
 
 ### 2b. Trust policy — only the Oryo ServiceAccount can assume it
 
