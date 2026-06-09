@@ -141,6 +141,16 @@ Drops empty values so they don't shadow defaults set elsewhere.
 */}}
 {{- define "oryo.commonEnv" -}}
 {{- $g := .Values.global -}}
+{{- /* Fail-fast on must-set values instead of rendering a broken release.
+       Chart defaults for these are empty; values.example.yaml supplies them.
+       API_BASE_URL especially MUST be set — its app-side fallback is
+       https://api.oryo.io (Oryo's own SaaS), wrong for a private deploy. */ -}}
+{{- $_domain := required "global.env.DOMAIN is required — your serving domain, e.g. oryo.example.com (see docs/prereqs.md §6)" $g.env.DOMAIN -}}
+{{- $_appUrl := required "global.env.APP_BASE_URL is required — https://app.<DOMAIN>" $g.env.APP_BASE_URL -}}
+{{- $_apiUrl := required "global.env.API_BASE_URL is required — https://api.<DOMAIN> (do NOT leave unset: it falls back to Oryo's api.oryo.io)" $g.env.API_BASE_URL -}}
+{{- $_bucket := required "global.env.DEFAULT_BUCKET is required — your S3 object-storage bucket (see docs/prereqs.md §1)" $g.env.DEFAULT_BUCKET -}}
+{{- $_dbHost := required "global.db.host is required — your RDS/Postgres endpoint (see docs/prereqs.md §6)" $g.db.host -}}
+{{- $_dbName := required "global.db.database is required — Postgres database name (default postgres works for RDS)" $g.db.database -}}
 {{- range $k, $v := $g.env }}
 {{- if ne (toString $v) "" }}
 - name: {{ $k }}

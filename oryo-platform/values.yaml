@@ -192,8 +192,9 @@ dashboard:
   ingress:
     enabled: false
     className: '' # e.g. nginx, alb
-    # Host pattern matches the ALB rule "^app\..*" in terraform.
-    host: app.example.com
+    # Required when ingress.enabled. Empty default so the chart fails fast
+    # rather than serving a placeholder host. Set to app.<DOMAIN>.
+    host: ''
     annotations: {}
     # nginx example:
     #   nginx.ingress.kubernetes.io/proxy-body-size: 10m
@@ -298,7 +299,8 @@ gateway:
   ingress:
     enabled: false
     className: ''
-    host: gateway.example.com
+    # Required when ingress.enabled. Set to gateway.<DOMAIN>.
+    host: ''
     annotations: {}
     tls:
       enabled: true
@@ -456,7 +458,8 @@ api:
   ingress:
     enabled: false
     className: ''
-    host: api.example.com
+    # Required when ingress.enabled. Set to api.<DOMAIN>.
+    host: ''
     annotations: {}
     tls:
       enabled: true

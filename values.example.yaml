@@ -16,19 +16,22 @@ global:
   imagePullPolicy: Always
   imagePullSecrets: []
 
+  # The values marked REQUIRED below fail-fast at `helm install/template` time —
+  # an empty value aborts the render with a pointer to docs/prereqs.md, rather
+  # than deploying a broken release that only fails later at ALB/DB time.
   env:
     ENV_NAME: stage  # `stage` is the private-deploy value — always use it. `prod` is reserved for Oryo's own SaaS; `dev`/`local` enable developer-only behavior. See docs/runbook.md §3.
-    DOMAIN: example.com                                # TODO: your domain
-    APP_BASE_URL: https://app.example.com              # TODO: https://app.<DOMAIN>
-    API_BASE_URL: https://api.example.com              # TODO: https://api.<DOMAIN> — sensors phone home here
-    DEFAULT_BUCKET: oryo-objects-<account>-<region>    # TODO: from setup.sh output
+    DOMAIN: example.com                                # REQUIRED — your domain
+    APP_BASE_URL: https://app.example.com              # REQUIRED — https://app.<DOMAIN>
+    API_BASE_URL: https://api.example.com              # REQUIRED — https://api.<DOMAIN> (unset falls back to Oryo's api.oryo.io — wrong for a private deploy)
+    DEFAULT_BUCKET: oryo-objects-<account>-<region>    # REQUIRED — from setup.sh output
 
     # (RESEND_API_KEY is required and lives on dashboard.externalSecrets below.)
 
   db:
-    host: <rds-endpoint>.rds.amazonaws.com             # TODO: your RDS endpoint
+    host: <rds-endpoint>.rds.amazonaws.com             # REQUIRED — your RDS endpoint
     port: 5432
-    database: postgres                                 # the database must already exist; `postgres` is RDS's default
+    database: postgres                                 # REQUIRED — the database must already exist; `postgres` is RDS's default
     sslmode: require
 
   externalSecrets:
@@ -74,7 +77,7 @@ dashboard:
   ingress:
     enabled: true
     className: alb
-    host: app.example.com                              # TODO
+    host: app.example.com                              # REQUIRED when ingress.enabled
     annotations: &albAnnotations
       alb.ingress.kubernetes.io/scheme: internet-facing
       alb.ingress.kubernetes.io/target-type: ip
@@ -96,7 +99,7 @@ gateway:
   ingress:
     enabled: true
     className: alb
-    host: gateway.example.com                          # TODO
+    host: gateway.example.com                          # REQUIRED when ingress.enabled
     annotations: *albAnnotations
   db:
     passwordSecret: { name: oryo-db-gateway, key: password }
@@ -112,7 +115,7 @@ api:
   ingress:
     enabled: true
     className: alb
-    host: api.example.com                              # TODO
+    host: api.example.com                              # REQUIRED when ingress.enabled
     annotations: *albAnnotations
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }

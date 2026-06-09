@@ -1,6 +1,7 @@
 {{- if and .Values.gateway.enabled .Values.gateway.ingress.enabled -}}
 {{- $component := "gateway" -}}
 {{- $svc := .Values.gateway -}}
+{{- $_host := required "gateway.ingress.host is required when gateway.ingress.enabled = true — e.g. gateway.<DOMAIN>" $svc.ingress.host -}}
 {{- $fullName := include "oryo.componentName" (list . $component) -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
