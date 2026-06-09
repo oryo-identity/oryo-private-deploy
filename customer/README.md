@@ -69,7 +69,7 @@ flowchart LR
 - **Customer AWS account** holds everything stateful (RDS, S3) and the running cluster. Nothing leaves it except outbound to Resend (login emails) and the one-time cross-account ECR pull at image fetch time.
 - **3 ALBs** terminate HTTPS at `app/api/gateway.<DOMAIN>` (one per ingress; share a wildcard ACM cert).
 - **4 services** run as arm64 pods, each connecting to RDS as its own least-privilege Postgres role (RLS-isolated by tenant), and to S3 via IRSA.
-- **Sensors phone home** to `gateway.<DOMAIN>` for traffic, hit `api.<DOMAIN>` for installer scripts (which signed-redirect to Oryo's binaries bucket).
+- **Sensors** send all runtime traffic (intercepted requests, CSRs, config polling) to `gateway.<DOMAIN>` in the customer's account. At install time they hit `api.<DOMAIN>` for the install script, which signed-redirects the actual binary download to Oryo's public sensor-binaries bucket.
 - Term unclear? See [docs/glossary.md](docs/glossary.md).
 
 ## Prerequisites
@@ -83,7 +83,7 @@ You provide:
 - A domain you control, with a Route 53 hosted zone in the same AWS account
 - An ACM certificate for `*.<your-domain>` in the same region as the cluster (terminates HTTPS at the ALBs)
 - The AWS-side prerequisites in [docs/prereqs.md](docs/prereqs.md): S3 bucket, IAM policy + IRSA role, public-subnet tags, dedicated arm64 NodePool
-- Oryo has added your AWS account ID to its ECR repository policies (contact your Oryo representative)
+- Oryo has added your AWS account ID to its ECR repository policies (contact your Oryo rep if your AWS account has not been provisioned access to our ECR images)
 
 Tools on your machine:
 

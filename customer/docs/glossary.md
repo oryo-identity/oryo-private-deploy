@@ -43,6 +43,8 @@ Postgres `CREATE POLICY` filters every query on tenant-scoped tables by `current
 
 Non-RLS tables (`tenants`, `access`, system tables) still need explicit `WHERE tenant_id = $1`.
 
+> **NOTE for private deployments:** RLS is primarily a multi-tenant SaaS safety net. A private install is expected to run as a **single tenant** (the one created by `dbInit.defaultTenant`), so cross-tenant leakage isn't a realistic concern in this environment. RLS still runs — it just doesn't have anything to isolate against. You can treat it as defense-in-depth, not as a load-bearing security boundary.
+
 ---
 
 ### Per-tenant sensor root CA

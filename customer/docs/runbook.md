@@ -15,7 +15,7 @@ These must already exist before you start. **The install kit creates nothing in 
 | **S3 bucket, IAM role, subnet tags** | You create these — [prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
 | **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [prereqs.md §5](prereqs.md). |
 | **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [prereqs.md §6](prereqs.md). |
-| **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo representative if you haven't been onboarded yet. |
+| **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images. |
 
 `setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
 
@@ -23,14 +23,15 @@ These must already exist before you start. **The install kit creates nothing in 
 
 ## 0. Tools
 
-Install locally:
-- `aws` CLI (v2)
-- `kubectl`
-- `helm` (v3)
-- `eksctl` (used by `setup.sh` to create the IRSA role)
-- `jq` (used by `setup.sh` for NodePool patching)
-- `openssl` (system default; used by `setup.sh` to generate secrets)
-- `docker` (optional — only for local image verification)
+These tools need to be installed locally to successfully go through the full flow of this runbook:
+
+- `aws` CLI (v2) — auth + every AWS-side operation
+- `kubectl` — talk to your EKS cluster
+- `helm` (v3) — install + upgrade the chart
+- `eksctl` — only needed for the eksctl-path IRSA setup in [prereqs.md §2b](prereqs.md) (skip if you create the role manually)
+- `jq` — used by `setup.sh` to inspect Auto Mode NodePools during preflight
+- `openssl` — used by `setup.sh --bootstrap-secrets` to generate session + role passwords (system default works on macOS/Linux)
+- `docker` (optional) — only for local image verification
 
 ## 1. Connect
 
