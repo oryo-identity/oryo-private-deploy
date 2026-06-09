@@ -38,6 +38,7 @@ source "$ENV_FILE"
 : "${BUCKET_NAME:?set in .env}"
 export AWS_PROFILE AWS_REGION
 ROLE_NAME="${ROLE_NAME:-OryoWorkloadRole}"
+SENSOR_EXECUTABLES_BUCKET="${SENSOR_EXECUTABLES_BUCKET:-binaries-pub-prod-us-east-1-oryo}"
 
 ok()   { printf "\033[1;32m  ✓\033[0m %s\n" "$*"; }
 bad()  { printf "\033[1;31m  ✗\033[0m %s\n" "$*"; FAILED=1; }
@@ -150,6 +151,7 @@ Plug these into values.yaml:
       eks.amazonaws.com/role-arn: $ROLE_ARN
 
   global.env.DEFAULT_BUCKET: $BUCKET_NAME
+  api.env.SENSOR_EXECUTABLES_BUCKET: $SENSOR_EXECUTABLES_BUCKET
 
 Then fill the rest (domain, RDS host, cert ARN, ingress hosts, default tenant)
 and install:

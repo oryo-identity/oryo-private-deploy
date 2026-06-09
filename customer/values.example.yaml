@@ -118,10 +118,11 @@ api:
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }
   env:
-    # S3 bucket hosting sensor install scripts (install.sh, install.ps1,
-    # install-linux.sh) that the dashboard's Installation tab links to.
-    # Oryo provides a public bucket: binaries-pub-dev-us-east-1-oryo.
-    SENSOR_EXECUTABLES_BUCKET: binaries-pub-dev-us-east-1-oryo
+    # Oryo's public sensor-binaries bucket. The dashboard's Installation tab
+    # links to install.sh / install.ps1 / install-linux.sh hosted here.
+    # TODO: from setup.sh output (defaults to the prod bucket; override only
+    # if Oryo gave you a different one, e.g. air-gap / mirror).
+    SENSOR_EXECUTABLES_BUCKET: binaries-pub-prod-us-east-1-oryo
 
 # Backoffice (Oryo-internal admin UI) is not shipped with this chart.
 # The templates/backoffice/ directory is stripped from the customer release.
