@@ -12,65 +12,40 @@ A Helm chart that runs the Oryo platform (dashboard, gateway, API, workers) insi
 
 ```mermaid
 flowchart LR
-    subgraph external["External"]
-        BROWSER([Admin browser])
-        SENSOR([Endpoint sensor])
-        RESEND[(Resend SMTP)]
-    end
+    BROWSER([Admin browser])
+    SENSOR([Endpoint sensor])
 
-    subgraph oryo_aws["Oryo distribution (Oryo AWS)"]
-        ECR[(ECR<br/>container images)]
-        BIN[(S3<br/>sensor binaries)]
-    end
-
-    subgraph customer["Customer AWS account"]
+    subgraph CUST["Customer AWS account"]
         direction TB
-        subgraph eks["EKS Auto Mode cluster"]
-            direction TB
-            ALB_APP[ALB<br/>app.&lt;DOMAIN&gt;]
-            ALB_API[ALB<br/>api.&lt;DOMAIN&gt;]
-            ALB_GW[ALB<br/>gateway.&lt;DOMAIN&gt;]
-
-            DASH[dashboard]
-            API[api]
-            GW[gateway]
-            WK[workers]
-
-            ALB_APP --> DASH
-            ALB_API --> API
-            ALB_GW --> GW
-        end
-
-        RDS[(RDS Postgres)]
-        S3[(S3<br/>object storage)]
+        ING["<b>3 ALBs</b> · wildcard ACM cert<br/>app.&lt;DOMAIN&gt; · api.&lt;DOMAIN&gt; · gateway.&lt;DOMAIN&gt;"]
+        PODS["<b>EKS Auto Mode · arm64 pods</b><br/>dashboard · api · gateway · workers"]
+        DATA["<b>Data plane</b><br/>RDS Postgres · S3 object storage"]
+        ING --> PODS --> DATA
     end
 
-    BROWSER -- HTTPS --> ALB_APP
-    BROWSER -- HTTPS --> ALB_API
-    SENSOR -- sensor traffic --> ALB_GW
-    SENSOR -. installer download .-> ALB_API
-    SENSOR -. installer redirect .-> BIN
+    subgraph THIRD["Third-party + Oryo distribution"]
+        direction TB
+        RESEND[(Resend SMTP)]
+        ECR[(Oryo ECR<br/>container images)]
+        BIN[(Oryo S3<br/>sensor binaries)]
+    end
 
-    DASH -- dashboard role --> RDS
-    API -- dashboard role --> RDS
-    GW -- gateway role --> RDS
-    WK -- worker role --> RDS
+    BROWSER --> ING
+    SENSOR --> ING
+    PODS -. image pull .-> ECR
+    PODS -. login emails .-> RESEND
+    SENSOR -. installer download .-> BIN
 
-    DASH -- IRSA --> S3
-    API -- IRSA --> S3
-    WK -- IRSA --> S3
-
-    DASH -- login codes --> RESEND
-
-    eks -. cross-account pull .-> ECR
+    classDef cust fill:#f0fff4,stroke:#3a7a4a,color:#0a3a1a
+    classDef third fill:#fff5e6,stroke:#9c6b1d,color:#3a2a0a
+    class CUST cust
+    class THIRD third
 ```
 
-**At a glance:**
-- **Customer AWS account** holds everything stateful (RDS, S3) and the running cluster. Nothing leaves it except outbound to Resend (login emails) and the one-time cross-account ECR pull at image fetch time.
-- **3 ALBs** terminate HTTPS at `app/api/gateway.<DOMAIN>` (one per ingress; share a wildcard ACM cert).
-- **4 services** run as arm64 pods, each connecting to RDS as its own least-privilege Postgres role (RLS-isolated by tenant), and to S3 via IRSA.
-- **Sensors** send all runtime traffic (intercepted requests, CSRs, config polling) to `gateway.<DOMAIN>` in the customer's account. At install time they hit `api.<DOMAIN>` for the install script, which signed-redirects the actual binary download to Oryo's public sensor-binaries bucket.
-- Term unclear? See [customer/docs/glossary.md](docs/glossary.md).
+**Reading the diagram:**
+- Solid arrows = always-on runtime traffic. Dotted = once-per-event (image pull at pod start, login email send, sensor installer fetch).
+- The "installer download" dotted line is the simplification of a two-hop: device fetches the install script from `api.<DOMAIN>`, which signed-redirects to Oryo's sensor-binaries S3. Bytes come from Oryo's bucket.
+- Each pod connects to RDS as its **own least-privilege Postgres role** (`oryo-dashboard` / `oryo-gateway` / `oryo-worker`); pod → S3 uses IRSA, no static AWS credentials. See [customer/docs/glossary.md](docs/glossary.md#per-service-postgres-roles) for the details left out of the diagram.
 
 ## Prerequisites
 
