@@ -111,13 +111,14 @@ EKS Auto Mode's load-balancer controller finds where to place ALBs by scanning t
 VPC_ID=$(aws eks describe-cluster --name <CLUSTER_NAME> --region <REGION> \
   --query 'cluster.resourcesVpcConfig.vpcId' --output text)
 
-PUBLIC_SUBNETS=$(aws ec2 describe-subnets --region <REGION> \
+aws ec2 describe-subnets --region <REGION> \
   --filters "Name=vpc-id,Values=$VPC_ID" "Name=map-public-ip-on-launch,Values=true" \
-  --query 'Subnets[].SubnetId' --output text)
-
-aws ec2 create-tags --region <REGION> --resources $PUBLIC_SUBNETS \
-  --tags Key=kubernetes.io/role/elb,Value=1
+  --query 'Subnets[].SubnetId' --output text \
+| xargs aws ec2 create-tags --region <REGION> \
+    --tags Key=kubernetes.io/role/elb,Value=1 --resources
 ```
+
+(xargs splits on whitespace including tabs, and `--resources` accepts multiple subnet IDs — so one `create-tags` call. Works in bash and zsh.)
 
 (Internal-only ALBs use `kubernetes.io/role/internal-elb=1` on private subnets — out of scope here.)
 
