@@ -1,6 +1,8 @@
-# Prerequisites — what you create in your AWS account
+# Prerequisites — what needs to exist in your AWS account
 
-Oryo's install kit **creates nothing in your AWS account**. You provision these resources yourself (console, CLI, Terraform — your choice), and `setup.sh` verifies they exist before install. This doc gives the exact specs.
+Oryo's install kit **creates nothing in your AWS account**. The resources below need to exist before `helm install` — `setup.sh` then verifies them and prints any gaps.
+
+> **NOTE:** This doc is a **helpful guide to get a green-field account to a base state**, with copy-pasteable CLI snippets that make sane choices for a first install. Most teams already run their own VPC / IRSA / RDS conventions and will satisfy these requirements through their existing IaC. If that's you, treat this as context — read the checklist at each section, confirm your setup meets the constraint, and skim past the snippets.
 
 Throughout, substitute:
 - `<ACCOUNT_ID>` — your AWS account ID
@@ -8,6 +10,7 @@ Throughout, substitute:
 - `<CLUSTER_NAME>` — your EKS cluster name
 - `<NAMESPACE>` — the k8s namespace you'll install into (e.g. `oryo`)
 - `<BUCKET_NAME>` — a globally-unique S3 bucket name you pick
+- `<DOMAIN>` — the domain you'll serve Oryo from (e.g. `oryo.example.com`)
 
 The ServiceAccount the pods run as is `oryo-platform` in `<NAMESPACE>` (set by `serviceAccount.name` in `values.yaml` — keep it as `oryo-platform` so the IAM trust policy below matches).
 
@@ -21,7 +24,8 @@ A private bucket in your account + region. The workers/api store files here.
 aws s3api create-bucket --bucket <BUCKET_NAME> --region <REGION> \
   --create-bucket-configuration LocationConstraint=<REGION>
 ```
-(us-east-1 omits `--create-bucket-configuration`.)
+
+> **NOTE:** `us-east-1` is a historical S3 quirk — omit `--create-bucket-configuration` entirely for that region; the CLI rejects `LocationConstraint=us-east-1`.
 
 Put the name in `values.yaml` → `global.env.DEFAULT_BUCKET`.
 
@@ -55,22 +59,45 @@ aws iam create-policy \
 
 This prints the policy ARN (`arn:aws:iam::<ACCOUNT_ID>:policy/OryoWorkloadPolicy`); you'll plug it into §2b.
 
-### 2b. Trust policy — only the Oryo ServiceAccount can assume it
+### 2b. IAM role with IRSA trust policy
 
-Requires an IAM OIDC provider associated with your cluster. If you don't have one:
+The role needs a trust policy binding it to the `oryo-platform` ServiceAccount via your cluster's OIDC provider. Two paths — **pick one**:
+
+#### Option A — eksctl (recommended, one command)
+
+`eksctl` looks up your cluster's OIDC issuer, builds the trust policy below for you, creates the role, and attaches the policy — in a single command:
+
+```bash
+eksctl create iamserviceaccount \
+  --cluster <CLUSTER_NAME> --region <REGION> \
+  --namespace <NAMESPACE> --name oryo-platform \
+  --role-only --role-name OryoWorkloadRole \
+  --attach-policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/OryoWorkloadPolicy \
+  --approve
+```
+
+> **NOTE:** `--role-only` is important — the Helm chart creates the ServiceAccount itself. If eksctl creates one too, the trust policy ends up bound to the wrong SA name and IRSA breaks silently.
+
+If your cluster doesn't have an IAM OIDC provider yet, `eksctl` will tell you. To create one:
+
 ```bash
 eksctl utils associate-iam-oidc-provider --cluster <CLUSTER_NAME> --region <REGION> --approve
 ```
 
+#### Option B — manual (no eksctl)
+
 Get your cluster's OIDC issuer (drop the `https://`):
+
 ```bash
 aws eks describe-cluster --name <CLUSTER_NAME> --region <REGION> \
   --query 'cluster.identity.oidc.issuer' --output text
 # e.g. oidc.eks.us-east-1.amazonaws.com/id/ABCDEF0123...
 ```
 
-Trust policy (`<OIDC>` = that value without `https://`):
-```json
+Save the trust policy (substitute `<OIDC>` = that value without `https://`):
+
+```bash
+cat > /tmp/oryo-trust.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -85,19 +112,16 @@ Trust policy (`<OIDC>` = that value without `https://`):
     }
   }]
 }
+EOF
+
+aws iam create-role --role-name OryoWorkloadRole \
+  --assume-role-policy-document file:///tmp/oryo-trust.json
+
+aws iam attach-role-policy --role-name OryoWorkloadRole \
+  --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/OryoWorkloadPolicy
 ```
 
-### Easiest path (if you use eksctl) — role only, no ServiceAccount
-
-```bash
-eksctl create iamserviceaccount \
-  --cluster <CLUSTER_NAME> --region <REGION> \
-  --namespace <NAMESPACE> --name oryo-platform \
-  --role-only --role-name OryoWorkloadRole \
-  --attach-policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/OryoWorkloadPolicy \
-  --approve
-```
-`--role-only` is important — the Helm chart creates the ServiceAccount itself.
+---
 
 Put the role ARN in `values.yaml` → `serviceAccount.annotations.eks.amazonaws.com/role-arn`.
 
@@ -118,9 +142,9 @@ aws ec2 describe-subnets --region <REGION> \
     --tags Key=kubernetes.io/role/elb,Value=1 --resources
 ```
 
-(xargs splits on whitespace including tabs, and `--resources` accepts multiple subnet IDs — so one `create-tags` call. Works in bash and zsh.)
+> **NOTE:** `xargs` splits on any whitespace (tabs included), and `--resources` accepts multiple subnet IDs — so this is one `create-tags` call. Works in bash and zsh.
 
-(Internal-only ALBs use `kubernetes.io/role/internal-elb=1` on private subnets — out of scope here.)
+> **NOTE:** Internal-only ALBs (no public traffic) use `kubernetes.io/role/internal-elb=1` on private subnets — out of scope here.
 
 ---
 
@@ -158,7 +182,7 @@ spec:
 EOF
 ```
 
-(Classic managed node groups instead of Auto Mode? Ensure at least one arm64 node group exists.)
+> **NOTE:** Using classic managed node groups instead of Auto Mode? Ensure at least one arm64 node group exists; you don't need a NodePool object.
 
 ---
 
@@ -172,9 +196,25 @@ You provide the endpoint (`global.db.host`) and master credentials (in `.env`, u
 
 ---
 
-## ACM certificate + domain
+## 6. ACM certificate + Route 53 hosted zone
 
-Covered in [runbook.md](runbook.md) prerequisites — a wildcard ACM cert for `*.<your-domain>` and a Route 53 hosted zone in this account.
+Each Oryo service is served over HTTPS at its own subdomain (`app.<DOMAIN>`, `api.<DOMAIN>`, `gateway.<DOMAIN>`). The ALBs terminate TLS using a **wildcard ACM certificate** you provide.
+
+**Requirements:**
+
+- A **Route 53 hosted zone** for `<DOMAIN>` in the same AWS account as the cluster (so the validation CNAME and subdomain records can be managed in-place).
+- A **wildcard ACM certificate for `*.<DOMAIN>`** in the **same region as the cluster** (ALBs can only use certs from their own region — unlike CloudFront, which requires `us-east-1`).
+
+```bash
+aws acm request-certificate \
+  --domain-name '*.<DOMAIN>' \
+  --validation-method DNS \
+  --region <REGION>
+```
+
+Then add the DNS-validation CNAME ACM tells you about to your Route 53 zone — ACM uses it to verify domain ownership and to keep the cert renewable. The cert needs to reach status `ISSUED` (typically within a few minutes of the CNAME being live) before you install.
+
+> **NOTE:** Once the cert is `ISSUED`, copy the cert ARN into `values.yaml` under each ingress's `alb.ingress.kubernetes.io/certificate-arn` annotation. After `helm install`, you'll create CNAMEs in this same hosted zone pointing `app.<DOMAIN>` / `api.<DOMAIN>` / `gateway.<DOMAIN>` at the ALB hostnames — see [runbook.md §5](runbook.md#5-point-dns-at-the-albs).
 
 ---
 

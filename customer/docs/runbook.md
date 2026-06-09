@@ -14,8 +14,7 @@ These must already exist before you start. **The install kit creates nothing in 
 | **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [prereqs.md §4](prereqs.md). |
 | **S3 bucket, IAM role, subnet tags** | You create these — [prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
 | **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [prereqs.md §5](prereqs.md). |
-| **Domain + Route 53 hosted zone** | Registered in Route 53, in the same AWS account. |
-| **ACM certificate** | Wildcard cert for `*.<your-domain>` in the cluster's region, `ISSUED`. ARN goes into `values.yaml`. |
+| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [prereqs.md §6](prereqs.md). |
 | **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo representative if you haven't been onboarded yet. |
 
 `setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
