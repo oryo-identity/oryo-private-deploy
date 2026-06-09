@@ -196,37 +196,21 @@ Open `https://app.<DOMAIN>` in a browser to access the dashboard.
 
 ## 7. Install a sensor (end-to-end verification)
 
-The real proof a deployment works: install a sensor on a device and confirm it intercepts AI traffic using the global rules seeded at install.
+The real proof a deployment works: install a sensor and confirm it intercepts AI traffic using the global rules seeded at install.
 
-1. In the dashboard: **Settings → Installation**. Copy the generated one-liner for your OS. It already includes `SENSOR_CONFIG_URL=https://api.<DOMAIN>/v1/sensor/config` pointing at *your* deployment, plus a registration token.
-2. Run it on the device. Expected output includes a config fetch like:
-   ```
-   Configuration fetched successfully  watch_domains=19  route_rules=37  message_rules=4
-   ```
-   Non-zero counts = your seeded global rules reached the sensor.
-3. **Trust the CA** (the install will tell you if it isn't trusted). Download the CA from **Settings → Installation → Download CA**, then on macOS:
-   ```bash
-   sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/Downloads/oryo-ca.pem
-   ```
-   Fully quit + reopen the browser afterward.
-4. Visit a watched site (e.g. `chatgpt.com`). It should load with **no TLS error** — the sensor's leaf cert chains to the now-trusted CA.
+Detailed instructions — registration token, install one-liner, CA download — live in the dashboard at **Settings → Installation**. This section is the high-level shape; follow the dashboard for the actual commands.
 
-### Sensor / CA gotchas — read this, it's where time gets lost
+### MDM fleet rollout (Intune / JAMF / etc.)
 
-- **The CA is per-tenant, not per-domain.** `CN=Oryo Sensor Root CA, OU=<tenantId>`. Switching domains is irrelevant; the OU (tenant) is what matters.
-- **The registration token and the CA download MUST be from the same tenant.** If you download the CA while viewing tenant A but install with a token minted under tenant B, the sensor presents leaves signed by B's CA while you trusted A's → `NET::ERR_CERT_AUTHORITY_INVALID`. Confirm they match:
-  ```bash
-  # CA the sensor actually uses (token from config.json):
-  TOKEN=$(sudo python3 -c "import json;print(json.load(open('/Library/Application Support/Oryo/config.json'))['registration']['resource_token'])")
-  curl -fsS -H "Authorization: Bearer $TOKEN" https://api.<DOMAIN>/v1/sensor/ca | openssl x509 -noout -subject
-  # The CA you trusted:
-  openssl x509 -in ~/Downloads/oryo-ca.pem -noout -subject
-  ```
-  The `OU=` must match. If not, trust the one the sensor uses (the curl output above) or re-mint the token from the right tenant.
-- **`security verify-cert` passing ≠ the sensor accepting it.** They can disagree if the sensor fetches a different cert (different tenant). Compare the actual SHA-256, not just "is some Oryo CA trusted."
-- **Re-deploys mint a new CA.** A full teardown/rebuild creates a new tenant + new root CA. Any CA you trusted before is now stale — re-download.
-- **macOS: imported ≠ trusted.** Double-clicking adds to Keychain without a trust setting. Use `add-trusted-cert -r trustRoot` (as above), and restart the browser — it snapshots the trust store at launch.
-- **Firefox uses its own trust store**, not the OS one — import the CA in Firefox settings separately.
+1. **Push the Oryo CA** from **Settings → Installation → Download CA** as a trusted root certificate via your MDM's standard certificate-distribution profile.
+2. **Push the install one-liner** (also from **Settings → Installation**) via your MDM's run-script policy.
+3. **Confirm** — the dashboard's Devices page populates as sensors register.
+
+### Manual testing (one device)
+
+Download the CA from **Settings → Installation → Download CA**, add it to your system's trust store, then run the install one-liner from the same page. Visit a watched site (e.g. `chatgpt.com`) — should load with no TLS error and show up in the dashboard within a few seconds.
+
+> **NOTE:** Each tenant has its own root CA. If you tear down and reinstall the platform, the CA regenerates — re-download and re-trust before retesting.
 
 ---
 
@@ -236,7 +220,7 @@ The real proof a deployment works: install a sensor on a device and confirm it i
 helm upgrade oryo ./chart \
   --namespace <NAMESPACE> \
   --values values.yaml \
-  --wait --timeout 15m
+  --wait --timeout 10m
 ```
 
 The `dbInit` hook re-runs on every upgrade (idempotent — schema additions are `IF NOT EXISTS`).
@@ -306,32 +290,11 @@ The pod is ephemeral (`--rm`) and never persists the password to disk. Quit with
 
 ## Gotchas
 
-### Auth / accounts
-- **Wrong AWS account via SSO.** Always run `aws sts get-caller-identity` before any state-changing command. Cert/domain/IAM created in the wrong account = restart in the right one.
-
-### ACM cert
-- **Cert stuck in `PENDING_VALIDATION`.** Requesting a cert does NOT validate it. Use the "Create records in Route 53" console button (or create the validation CNAMEs manually with the CLI).
-
-### EKS Auto Mode
-
-EKS Auto Mode shifts a lot of plumbing AWS-side. Most of it Just Works™, but the parts that don't tend to be silent / non-obvious:
-
-- **NodePool defaults to amd64 only.** The `general-purpose` NodePool that ships with Auto Mode only provisions amd64. Oryo's images are arm64. Without a patch (now in `setup.sh`), every workload pod stays `Pending` forever with:
-  ```
-  incompatible requirements, key kubernetes.io/arch, In [arm64] not in [amd64]
-  ```
-  Diagnose with `kubectl describe pod <pending-pod>` — the FailedScheduling event spells it out.
-- **Existing arm64 nodes are tainted `CriticalAddonsOnly:NoSchedule`.** Those belong to the `system` NodePool, reserved for cluster add-ons. They look like usable workload nodes in `kubectl get nodes` — they're not.
-- **Manual ALB controller NEVER on Auto Mode.** Don't install the standalone `aws-load-balancer-controller` Helm chart on Auto Mode. It crashes with `ec2imds GetMetadata` timeouts. The chart's IngressClass routes to Auto Mode's built-in controller (`controller: eks.amazonaws.com/alb`) — that's what you want.
-- **ALB controller needs subnets tagged for auto-discovery.** Public subnets need `kubernetes.io/role/elb=1`. Without this, Ingresses sit forever with empty `ADDRESS` and events say `Failed build model due to couldn't auto-discover subnets`. `setup.sh` tags these now.
-- **Auto Mode provisioning is slow.** Each new node = 2–5 min from "pod Pending" → "node Ready → pod scheduled → container running". `--wait --timeout 15m` is the safe default.
-- **`group.name` ingress annotation may not merge into a single ALB.** The chart's `alb.ingress.kubernetes.io/group.name: oryo` annotation is intended to share one ALB across all 3 ingresses. With Auto Mode's built-in controller we've observed 3 separate ALBs. Functional but slightly more billing.
-
-### Database
-
-- **RDS unreachable from cluster.** dbInit hangs if the RDS security group doesn't allow inbound from the EKS pod CIDR. Fix: ensure the cluster's SG (or workload node SG) is in RDS's inbound allowlist on port 5432.
-
-### Helm
-
-- **`--dry-run` prints NOTES.** Don't mistake dry-run output for a successful install. `helm list -A` is the ground truth.
-- **dbInit hook failure fails the install/upgrade.** When `dbInit` fails, helm rolls back and you can't `kubectl logs` after the fact (the hook job is cleaned up). Either capture logs live, or run with `--no-hooks` to debug the rest, then run dbInit separately.
+- **Wrong AWS account via SSO.** Run `aws sts get-caller-identity` before any state-changing command.
+- **ACM cert stuck in `PENDING_VALIDATION`.** Requesting a cert doesn't validate it — add the validation CNAMEs to your Route 53 zone.
+- **Don't patch the built-in `general-purpose` NodePool to add arm64** — Auto Mode reconciles it back to default. Use the dedicated `oryo-arm64` NodePool from [prereqs.md §4](prereqs.md).
+- **Don't install the standalone `aws-load-balancer-controller` on Auto Mode** — the built-in controller handles ALBs; the standalone one crashes with `ec2imds GetMetadata` timeouts.
+- **3 ALBs, not 1.** The chart's `group.name` annotation is intended to share one ALB across ingresses, but Auto Mode currently provisions one per ingress. Functional, just slightly more billing.
+- **`dbInit` hangs** = RDS isn't reachable from the cluster. Allow the cluster SG inbound to port 5432.
+- **`helm --dry-run` ≠ a successful install.** `helm list -A` is the ground truth.
+- **`dbInit` hook failure rolls back the install** and the hook Job is cleaned up — capture logs live during the install, or run with `--no-hooks` to debug separately.
