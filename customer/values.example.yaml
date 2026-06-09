@@ -17,7 +17,7 @@ global:
   imagePullSecrets: []
 
   env:
-    ENV_NAME: prod  # MUST be one of: local | dev | stage | prod (SharedEnvZ enum)
+    ENV_NAME: stage  # one of: local | dev | stage | prod (SharedEnvZ enum). Use `stage` for now — see runbook.md §3.
     DOMAIN: example.com                                # TODO: your domain
     APP_BASE_URL: https://app.example.com              # TODO: https://app.<DOMAIN>
     API_BASE_URL: https://api.example.com              # TODO: https://api.<DOMAIN> — sensors phone home here

@@ -101,7 +101,7 @@ Replace placeholders (search for `TODO`):
 - **`alb.ingress.kubernetes.io/certificate-arn`** — ACM cert ARN (from prereqs; 3 ingresses use it).
 - **Ingress hostnames** — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
 - **`dbInit.defaultTenant`** — your org name + owner email.
-- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum constraint). For production deploys use `prod`.
+- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum). **For now, set this to `stage`** for all private-deploy installs while the offering is still being hardened — that way private-deploy traffic is distinguishable from Oryo's own `prod` and we can roll back/adjust behavior per environment without disrupting customers. We'll graduate the recommendation to `prod` once the kit is GA.
 
 ## 4. `helm install`
 
@@ -109,12 +109,12 @@ Replace placeholders (search for `TODO`):
 helm install oryo ./chart \
   --namespace <NAMESPACE> --create-namespace \
   --values values.yaml \
-  --wait --timeout 15m
+  --wait --timeout 10m
 ```
 
 > If you bootstrapped secrets with `setup.sh --bootstrap-secrets`, the namespace already exists — `--create-namespace` is a harmless no-op.
 
-**Timeout matters.** Auto Mode dynamic node provisioning takes 2–5 min per node, plus image pull + container startup. The dbInit hook adds another minute. 5 min isn't enough; 10–15 min is safe.
+**Timeout matters.** First install on a cold cluster pulls images, provisions new arm64 nodes, runs the dbInit hook, then waits for all pods to become Ready — a single end-to-end pass that can take a few minutes. 10 minutes is usually plenty of headroom; bump it higher if your cluster is provisioning capacity from scratch.
 
 The `dbInit` hook (pre-install + pre-upgrade) connects to RDS as the admin user, creates the per-service Postgres roles using the passwords from the k8s Secrets, applies schema and RLS policies, seeds global rules, seeds the default tenant. Everything is idempotent, so it runs on every install and upgrade. **The target database must already exist** — use the default `postgres` database or create your own beforehand.
 

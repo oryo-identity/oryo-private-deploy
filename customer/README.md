@@ -114,7 +114,7 @@ $EDITOR values.yaml         # domain, cert ARN, role ARN, RDS host, etc.
 helm install oryo ./chart \
   --namespace oryo --create-namespace \
   --values values.yaml \
-  --wait --timeout 15m
+  --wait --timeout 10m
 
 # 5. Point DNS at the ALBs
 kubectl -n oryo get ingress
