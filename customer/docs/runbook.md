@@ -244,6 +244,65 @@ To skip the dbInit hook on upgrades (faster), set `dbInit.enabled: false` in `va
 
 ---
 
+## Secret rotation
+
+The chart consumes 6 k8s Secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`). Rotating them in production has different choreography depending on which one — these are the Oryo-specific gotchas. Coordinate with your secrets store (Vault, AWS Secrets Manager, ESO, etc.) for the actual key delivery; the dance below is what the chart expects.
+
+### `oryo-session-secret`
+
+Rotating it **logs every signed-in user out**. The dashboard verifies incoming cookies with the current key; cookies signed with the old key fail HMAC verification and the user gets bounced to login.
+
+Procedure:
+1. Update the Secret with the new value.
+2. Restart dashboard pods (`kubectl rollout restart deploy/oryo-oryo-platform-dashboard`).
+
+No multi-key / overlap window is supported. If user-facing downtime matters, pick a low-traffic window.
+
+### Per-service DB role passwords (`oryo-db-{dashboard,gateway,worker}`)
+
+The chart's `dbInit` hook **does not** re-issue `ALTER ROLE … WITH PASSWORD` on existing roles (deliberate — `init-roles.ts` explains why). So rotation requires syncing the Postgres role's password with the new k8s Secret yourself, in this order:
+
+1. Generate the new password.
+2. `ALTER ROLE "oryo-<service>" WITH PASSWORD '<new>'` against RDS (use a debug pod that mounts `oryo-db-admin`, see "Ad-hoc DB access" below).
+3. Update the k8s Secret with the same new value.
+4. Restart the affected service pods.
+
+If you do step 3 before step 2, the new pods crashloop on `28P01 invalid_password` until step 2 lands. If you do step 2 before step 4, the old pods (still using the old password) crashloop on `28P01` until they restart. Either ordering works — just don't leave a gap between them.
+
+### `oryo-db-admin` (RDS master)
+
+Used only by the `dbInit` hook during `helm install` / `helm upgrade` — long-running pods don't mount it.
+
+Procedure:
+1. Rotate the password on the RDS instance (`aws rds modify-db-instance --master-user-password`).
+2. Update the k8s Secret.
+3. Next `helm upgrade` picks it up. (You don't need to bounce anything.)
+
+If the rotation happens **between** upgrades, no pod is affected — only the next dbInit run will use it.
+
+### `oryo-resend-api-key`
+
+Rotate on the Resend side, update the k8s Secret, restart dashboard pods. Mid-rotation in-flight login codes may fail to send; users will retry.
+
+### Ad-hoc DB access (for the `ALTER ROLE` step)
+
+```bash
+NS=<NAMESPACE>
+ADMIN_PW=$(kubectl -n $NS get secret oryo-db-admin -o jsonpath='{.data.password}' | base64 -d)
+RDS=$(kubectl -n $NS get configmap oryo-oryo-platform-env -o jsonpath='{.data.DB_HOST}' 2>/dev/null \
+       || echo '<your-rds-endpoint>')
+
+kubectl -n $NS run psql-debug --rm -it --restart=Never --image=postgres:15 \
+  --env="PGPASSWORD=$ADMIN_PW" -- \
+  psql "host=$RDS user=postgres dbname=postgres sslmode=require"
+```
+
+The pod is ephemeral (`--rm`) and never persists the password to disk. Quit with `\q` and the pod is gone.
+
+> **NOTE:** k8s Secrets are base64 (not encrypted) in etcd by default. For production, enable EKS envelope encryption with KMS — see [AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/enable-kms.html). Without it, anyone with `secrets/get` RBAC sees the plaintext.
+
+---
+
 ## Gotchas
 
 ### Auth / accounts

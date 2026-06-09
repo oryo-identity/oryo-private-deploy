@@ -8,6 +8,70 @@ Deploy Oryo in your own AWS account + EKS cluster.
 
 A Helm chart that runs the Oryo platform (dashboard, gateway, API, workers) inside your EKS cluster, pulling container images from Oryo's distribution registry, with TLS-terminated ingress and a Postgres backend you own.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph external["External"]
+        BROWSER([Admin browser])
+        SENSOR([Endpoint sensor])
+        RESEND[(Resend SMTP)]
+    end
+
+    subgraph oryo_aws["Oryo distribution (Oryo AWS)"]
+        ECR[(ECR<br/>container images)]
+        BIN[(S3<br/>sensor binaries)]
+    end
+
+    subgraph customer["Customer AWS account"]
+        direction TB
+        subgraph eks["EKS Auto Mode cluster"]
+            direction TB
+            ALB_APP[ALB<br/>app.&lt;DOMAIN&gt;]
+            ALB_API[ALB<br/>api.&lt;DOMAIN&gt;]
+            ALB_GW[ALB<br/>gateway.&lt;DOMAIN&gt;]
+
+            DASH[dashboard]
+            API[api]
+            GW[gateway]
+            WK[workers]
+
+            ALB_APP --> DASH
+            ALB_API --> API
+            ALB_GW --> GW
+        end
+
+        RDS[(RDS Postgres)]
+        S3[(S3<br/>object storage)]
+    end
+
+    BROWSER -- HTTPS --> ALB_APP
+    BROWSER -- HTTPS --> ALB_API
+    SENSOR -- sensor traffic --> ALB_GW
+    SENSOR -. installer download .-> ALB_API
+    SENSOR -. installer redirect .-> BIN
+
+    DASH -- dashboard role --> RDS
+    API -- dashboard role --> RDS
+    GW -- gateway role --> RDS
+    WK -- worker role --> RDS
+
+    DASH -- IRSA --> S3
+    API -- IRSA --> S3
+    WK -- IRSA --> S3
+
+    DASH -- login codes --> RESEND
+
+    eks -. cross-account pull .-> ECR
+```
+
+**At a glance:**
+- **Customer AWS account** holds everything stateful (RDS, S3) and the running cluster. Nothing leaves it except outbound to Resend (login emails) and the one-time cross-account ECR pull at image fetch time.
+- **3 ALBs** terminate HTTPS at `app/api/gateway.<DOMAIN>` (one per ingress; share a wildcard ACM cert).
+- **4 services** run as arm64 pods, each connecting to RDS as its own least-privilege Postgres role (RLS-isolated by tenant), and to S3 via IRSA.
+- **Sensors phone home** to `gateway.<DOMAIN>` for traffic, hit `api.<DOMAIN>` for installer scripts (which signed-redirect to Oryo's binaries bucket).
+- Term unclear? See [docs/glossary.md](docs/glossary.md).
+
 ## Prerequisites
 
 This install kit **creates nothing in your AWS account.** You provision the AWS-side prerequisites yourself (per [docs/prereqs.md](docs/prereqs.md)); `setup.sh` then verifies they exist before install and prints the values you need to drop into `values.yaml`.
