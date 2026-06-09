@@ -55,8 +55,10 @@ fi
 
 # ──────────────────────────────────────────────────────────────────────────
 # prereqs.md §2a — IAM permission policy
-#   WHY: pods need S3 access (read/write/list) limited to the bucket above.
-#   Least-privilege: only that bucket, only object + list actions.
+#   WHY: pods need (1) S3 access scoped to the bucket above, and (2)
+#   bedrock:InvokeModel/Converse on the two foundation models the agents call
+#   (Haiku 3 for classification/discovery/DLP/parser-fallback, Nova Micro for
+#   enrichment). Least-privilege: that bucket + those two model ARNs only.
 # ──────────────────────────────────────────────────────────────────────────
 log "IAM policy $POLICY_NAME"
 POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${POLICY_NAME}"
@@ -65,11 +67,24 @@ if aws iam get-policy --policy-arn "$POLICY_ARN" >/dev/null 2>&1; then
 else
   TMP=$(mktemp)
   cat > "$TMP" <<EOF
-{ "Version": "2012-10-17", "Statement": [{
-  "Effect": "Allow",
-  "Action": ["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket"],
-  "Resource": ["arn:aws:s3:::${BUCKET_NAME}","arn:aws:s3:::${BUCKET_NAME}/*"]
-}]}
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::${BUCKET_NAME}","arn:aws:s3:::${BUCKET_NAME}/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel","bedrock:Converse"],
+      "Resource": [
+        "arn:aws:bedrock:${AWS_REGION}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+        "arn:aws:bedrock:${AWS_REGION}::foundation-model/amazon.nova-micro-v1:0"
+      ]
+    }
+  ]
+}
 EOF
   aws iam create-policy --policy-name "$POLICY_NAME" --policy-document "file://$TMP" >/dev/null
   rm "$TMP"; log "  created"
@@ -145,6 +160,27 @@ EOF
   log "  applied"
 else
   log "No Auto Mode NodePools — ensure an arm64 node group exists (classic)."
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# prereqs.md §5 — Bedrock model access (verify only; console step to enable)
+#   WHY: model access is per-account+region opt-in. There's no public CLI/IAM
+#   call to grant it; the customer (or sandbox owner) clicks through in the
+#   Bedrock console. We probe via converse — AccessDeniedException with
+#   "don't have access to the model" means opt-in is missing.
+# ──────────────────────────────────────────────────────────────────────────
+log "Bedrock model access ($AWS_REGION)"
+PROBE=$(aws bedrock-runtime converse --region "$AWS_REGION" \
+  --model-id anthropic.claude-3-haiku-20240307-v1:0 \
+  --messages '[{"role":"user","content":[{"text":"ping"}]}]' \
+  --inference-config '{"maxTokens":1}' 2>&1 >/dev/null || true)
+if [[ -z "$PROBE" ]]; then
+  log "  Haiku 3 reachable"
+elif echo "$PROBE" | grep -q "don't have access to the model"; then
+  log "  WARN: Bedrock model access NOT enabled — open Bedrock console → Model access → request"
+  log "        anthropic.claude-3-haiku-20240307-v1:0 and amazon.nova-micro-v1:0 in $AWS_REGION."
+else
+  log "  WARN: Bedrock probe error: $(echo "$PROBE" | head -1)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────────

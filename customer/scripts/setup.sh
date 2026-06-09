@@ -107,7 +107,50 @@ else
   warn "no Auto Mode NodePools (classic node groups) — ensure an arm64 node group exists"
 fi
 
-# ----- 5. K8s secrets ------------------------------------------------------
+# ----- 5. Bedrock model access ---------------------------------------------
+#
+# Two things have to be true for the agents (classification, discovery, DLP,
+# parser fallback, enricher) to work:
+#   1. The IRSA role's policy grants bedrock:InvokeModel for the two models.
+#      We can't reliably introspect that here — IAM evaluation is non-trivial
+#      (boundaries, SCPs, inline policies). We rely on customer/docs/prereqs.md §2a.
+#   2. Bedrock model access is enabled in this account+region.
+#
+# We probe (2) with list-foundation-models (region availability) and a
+# tiny converse smoke call (account opt-in). Both are read-only.
+
+log "Bedrock model access ($AWS_REGION)"
+HAIKU_ID="anthropic.claude-3-haiku-20240307-v1:0"
+NOVA_ID="amazon.nova-micro-v1:0"
+AVAILABLE=$(aws bedrock list-foundation-models --region "$AWS_REGION" \
+  --query "modelSummaries[?modelId=='$HAIKU_ID' || modelId=='$NOVA_ID'].modelId" \
+  --output text 2>/dev/null || echo "")
+case "$AVAILABLE" in
+  *"$HAIKU_ID"*"$NOVA_ID"*|*"$NOVA_ID"*"$HAIKU_ID"*) ok "$HAIKU_ID + $NOVA_ID available in $AWS_REGION" ;;
+  *"$HAIKU_ID"*) bad "$NOVA_ID not available in $AWS_REGION — pick a Bedrock-supported region or set global.env.AWS_REGION (see customer/docs/prereqs.md §5)" ;;
+  *"$NOVA_ID"*)  bad "$HAIKU_ID not available in $AWS_REGION — pick a Bedrock-supported region or set global.env.AWS_REGION (see customer/docs/prereqs.md §5)" ;;
+  *) bad "neither Haiku 3 nor Nova Micro listed in $AWS_REGION — see customer/docs/prereqs.md §5" ;;
+esac
+
+# Smoke-call Haiku to confirm account opt-in. AccessDeniedException with
+# "don't have access to the model" → model-access opt-in missing (console step).
+# AccessDeniedException with "not authorized to perform: bedrock:InvokeModel"
+# → IAM grant missing (your principal, not the IRSA role). Other errors are
+# reported as-is.
+PROBE=$(aws bedrock-runtime converse --region "$AWS_REGION" --model-id "$HAIKU_ID" \
+  --messages '[{"role":"user","content":[{"text":"ping"}]}]' \
+  --inference-config '{"maxTokens":1}' 2>&1 >/dev/null || true)
+if [[ -z "$PROBE" ]]; then
+  ok "Bedrock converse smoke call to Haiku 3 succeeded"
+elif echo "$PROBE" | grep -q "don't have access to the model"; then
+  bad "Bedrock model access not enabled for Haiku 3 in $AWS_REGION — enable in console (customer/docs/prereqs.md §5)"
+elif echo "$PROBE" | grep -q "not authorized to perform: bedrock:InvokeModel"; then
+  warn "Your CLI principal lacks bedrock:InvokeModel — pod IRSA may still be fine. Verify the IRSA role's policy includes the §2a Bedrock statement."
+else
+  warn "Bedrock smoke call returned: $(echo "$PROBE" | head -1)"
+fi
+
+# ----- 6. K8s secrets ------------------------------------------------------
 
 REQUIRED_SECRETS=(oryo-session-secret oryo-db-admin oryo-db-dashboard oryo-db-gateway oryo-db-worker oryo-resend-api-key)
 
