@@ -2,7 +2,7 @@
 # Oryo private-deployment preflight.
 #
 # This script CREATES NOTHING in your AWS account. It verifies that the
-# prerequisites from docs/prereqs.md exist and are configured correctly, then
+# prerequisites from customer/docs/prereqs.md exist and are configured correctly, then
 # prints the values you need for values.yaml. If anything is missing it tells
 # you exactly what to create.
 #
@@ -61,7 +61,7 @@ log "S3 object-storage bucket"
 if aws s3api head-bucket --bucket "$BUCKET_NAME" >/dev/null 2>&1; then
   ok "bucket $BUCKET_NAME exists"
 else
-  bad "bucket $BUCKET_NAME not found — see docs/prereqs.md §1"
+  bad "bucket $BUCKET_NAME not found — see customer/docs/prereqs.md §1"
 fi
 
 # ----- 2. IAM role (IRSA) --------------------------------------------------
@@ -71,7 +71,7 @@ if ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --out
   ok "role $ROLE_NAME exists ($ROLE_ARN)"
 else
   ROLE_ARN=""
-  bad "role $ROLE_NAME not found — see docs/prereqs.md §2"
+  bad "role $ROLE_NAME not found — see customer/docs/prereqs.md §2"
 fi
 
 # ----- 3. Public subnets tagged for ALB discovery --------------------------
@@ -83,7 +83,7 @@ if [[ -n "$VPC_ID" ]]; then
     --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:kubernetes.io/role/elb,Values=1" \
     --query 'Subnets[].SubnetId' --output text 2>/dev/null || echo "")
   [[ -n "$TAGGED" ]] && ok "public subnets tagged kubernetes.io/role/elb=1" \
-    || bad "no subnets tagged kubernetes.io/role/elb=1 in $VPC_ID — see docs/prereqs.md §3"
+    || bad "no subnets tagged kubernetes.io/role/elb=1 in $VPC_ID — see customer/docs/prereqs.md §3"
 else
   bad "could not resolve cluster VPC"
 fi
@@ -102,7 +102,7 @@ if kubectl get nodepool >/dev/null 2>&1; then
     | select(((.spec.template.spec.taints // []) | map(select(.effect=="NoSchedule")) | length) == 0)
     | .metadata.name' | head -1)
   [[ -n "$ARM_POOL" ]] && ok "schedulable arm64 NodePool: '$ARM_POOL'" \
-    || bad "no schedulable arm64 NodePool — see docs/prereqs.md §4 (create a dedicated arm64 NodePool)"
+    || bad "no schedulable arm64 NodePool — see customer/docs/prereqs.md §4 (create a dedicated arm64 NodePool)"
 else
   warn "no Auto Mode NodePools (classic node groups) — ensure an arm64 node group exists"
 fi
@@ -166,7 +166,7 @@ fi
 
 echo
 if [[ "$FAILED" -ne 0 ]]; then
-  printf "\033[1;31m[preflight] Not ready.\033[0m Fix the ✗ items above (see docs/prereqs.md), then re-run.\n"
+  printf "\033[1;31m[preflight] Not ready.\033[0m Fix the ✗ items above (see customer/docs/prereqs.md), then re-run.\n"
   exit 1
 fi
 

@@ -43,6 +43,8 @@ Postgres `CREATE POLICY` filters every query on tenant-scoped tables by `current
 
 Non-RLS tables (`tenants`, `access`, system tables) still need explicit `WHERE tenant_id = $1`.
 
+> **NOTE for private deployments:** RLS is primarily a multi-tenant SaaS safety net. A private install is expected to run as a **single tenant** (the one created by `dbInit.defaultTenant`), so cross-tenant leakage isn't a realistic concern in this environment. RLS still runs — it just doesn't have anything to isolate against. You can treat it as defense-in-depth, not as a load-bearing security boundary.
+
 ---
 
 ### Per-tenant sensor root CA
@@ -57,7 +59,7 @@ The CA private key stays server-side; only leaf certs go to devices.
 
 Oryo's container images live in Oryo's prod ECR (`831622638566.dkr.ecr.us-east-1.amazonaws.com`). For a customer cluster to pull them, Oryo runs `grant-ecr-pull.sh` from the registry account to add the customer's account ID to each repo's `aws_ecr_repository_policy`. This is one-time per customer account.
 
-You send Oryo your AWS account ID + region; Oryo grants pull access to `api`, `dashboard`, `gateway`, `workers`, `db-init`. See `docs/onboarding.md`.
+You send Oryo your AWS account ID + region; Oryo grants pull access to `api`, `dashboard`, `gateway`, `workers`, `db-init`. See `customer/docs/onboarding.md`.
 
 ---
 

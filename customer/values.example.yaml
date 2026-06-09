@@ -4,7 +4,7 @@
 #   helm install oryo ./chart --namespace oryo --values values.yaml
 #
 # Anything not overridden falls back to defaults in chart/values.yaml.
-# See docs/runbook.md for the long form.
+# See customer/docs/runbook.md for the long form.
 
 global:
   # ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ global:
   imagePullSecrets: []
 
   env:
-    ENV_NAME: prod  # MUST be one of: local | dev | stage | prod (SharedEnvZ enum)
+    ENV_NAME: stage  # one of: local | dev | stage | prod (SharedEnvZ enum). Use `stage` for now — see runbook.md §3.
     DOMAIN: example.com                                # TODO: your domain
     APP_BASE_URL: https://app.example.com              # TODO: https://app.<DOMAIN>
     API_BASE_URL: https://api.example.com              # TODO: https://api.<DOMAIN> — sensors phone home here
@@ -42,7 +42,7 @@ global:
 
 serviceAccount:
   # Keep this name — your IAM role's trust policy binds to
-  # system:serviceaccount:<namespace>:oryo-platform (see docs/prereqs.md §2).
+  # system:serviceaccount:<namespace>:oryo-platform (see customer/docs/prereqs.md §2).
   name: oryo-platform
   annotations:
     # TODO: paste the role ARN printed by setup.sh

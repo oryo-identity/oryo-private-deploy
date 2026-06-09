@@ -12,69 +12,55 @@ A Helm chart that runs the Oryo platform (dashboard, gateway, API, workers) insi
 
 ```mermaid
 flowchart LR
-    subgraph external["External"]
-        BROWSER([Admin browser])
-        SENSOR([Endpoint sensor])
+    BROWSER([Admin browser])
+    SENSOR([Endpoint sensor])
+
+    subgraph CUST["Customer AWS account"]
+        direction TB
+        subgraph ING["3 ALBs · wildcard ACM cert"]
+            direction TB
+            ALB_APP[app.&lt;DOMAIN&gt;]
+            ALB_API[api.&lt;DOMAIN&gt;]
+            ALB_GW[gateway.&lt;DOMAIN&gt;]
+        end
+        PODS["<b>EKS Auto Mode · arm64 pods</b><br/>dashboard · api · gateway · workers"]
+        DATA["<b>Data plane</b><br/>RDS Postgres · S3 object storage"]
+        ING --> PODS --> DATA
+    end
+
+    subgraph EXTDEPS["External dependencies"]
         RESEND[(Resend SMTP)]
     end
 
-    subgraph oryo_aws["Oryo distribution (Oryo AWS)"]
+    subgraph ORYO["Oryo · cross-account"]
+        direction TB
         ECR[(ECR<br/>container images)]
         BIN[(S3<br/>sensor binaries)]
     end
 
-    subgraph customer["Customer AWS account"]
-        direction TB
-        subgraph eks["EKS Auto Mode cluster"]
-            direction TB
-            ALB_APP[ALB<br/>app.&lt;DOMAIN&gt;]
-            ALB_API[ALB<br/>api.&lt;DOMAIN&gt;]
-            ALB_GW[ALB<br/>gateway.&lt;DOMAIN&gt;]
+    BROWSER --> ALB_APP
+    SENSOR --> ALB_GW
+    SENSOR -. installer fetch .-> ALB_API
+    SENSOR -. installer bytes .-> BIN
+    PODS -. login emails .-> RESEND
+    PODS -. image pull .-> ECR
 
-            DASH[dashboard]
-            API[api]
-            GW[gateway]
-            WK[workers]
-
-            ALB_APP --> DASH
-            ALB_API --> API
-            ALB_GW --> GW
-        end
-
-        RDS[(RDS Postgres)]
-        S3[(S3<br/>object storage)]
-    end
-
-    BROWSER -- HTTPS --> ALB_APP
-    BROWSER -- HTTPS --> ALB_API
-    SENSOR -- sensor traffic --> ALB_GW
-    SENSOR -. installer download .-> ALB_API
-    SENSOR -. installer redirect .-> BIN
-
-    DASH -- dashboard role --> RDS
-    API -- dashboard role --> RDS
-    GW -- gateway role --> RDS
-    WK -- worker role --> RDS
-
-    DASH -- IRSA --> S3
-    API -- IRSA --> S3
-    WK -- IRSA --> S3
-
-    DASH -- login codes --> RESEND
-
-    eks -. cross-account pull .-> ECR
+    classDef cust fill:#f0fff4,stroke:#3a7a4a,color:#0a3a1a
+    classDef oryo fill:#fff5e6,stroke:#9c6b1d,color:#3a2a0a
+    classDef ext fill:#eef0ff,stroke:#4a5fa5,color:#1a2a5a
+    class CUST,ING cust
+    class ORYO oryo
+    class EXTDEPS ext
 ```
 
-**At a glance:**
-- **Customer AWS account** holds everything stateful (RDS, S3) and the running cluster. Nothing leaves it except outbound to Resend (login emails) and the one-time cross-account ECR pull at image fetch time.
-- **3 ALBs** terminate HTTPS at `app/api/gateway.<DOMAIN>` (one per ingress; share a wildcard ACM cert).
-- **4 services** run as arm64 pods, each connecting to RDS as its own least-privilege Postgres role (RLS-isolated by tenant), and to S3 via IRSA.
-- **Sensors phone home** to `gateway.<DOMAIN>` for traffic, hit `api.<DOMAIN>` for installer scripts (which signed-redirect to Oryo's binaries bucket).
-- Term unclear? See [docs/glossary.md](docs/glossary.md).
+**Reading the diagram:**
+- **Solid** arrows = always-on runtime traffic (admin → dashboard, sensor → gateway, pod → DB / S3). **Dotted** = once-per-event (image pull, login emails, installer fetch).
+- The two-hop installer fetch — `sensor → api.<DOMAIN>` retrieves the install script, which signed-redirects to `Oryo S3`; the bytes come from Oryo's bucket directly.
+- Each pod connects to RDS as its **own least-privilege Postgres role** (`oryo-dashboard` / `oryo-gateway` / `oryo-worker`); pod → S3 uses IRSA, no static AWS credentials. See [customer/docs/glossary.md](docs/glossary.md#per-service-postgres-roles) for the per-role details the diagram leaves out.
 
 ## Prerequisites
 
-This install kit **creates nothing in your AWS account.** You provision the AWS-side prerequisites yourself (per [docs/prereqs.md](docs/prereqs.md)); `setup.sh` then verifies they exist before install and prints the values you need to drop into `values.yaml`.
+This install kit **creates nothing in your AWS account.** You provision the AWS-side prerequisites yourself (per [customer/docs/prereqs.md](docs/prereqs.md)); `setup.sh` then verifies they exist before install and prints the values you need to drop into `values.yaml`.
 
 You provide:
 
@@ -82,8 +68,8 @@ You provide:
 - Postgres database (RDS recommended) reachable from the cluster
 - A domain you control, with a Route 53 hosted zone in the same AWS account
 - An ACM certificate for `*.<your-domain>` in the same region as the cluster (terminates HTTPS at the ALBs)
-- The AWS-side prerequisites in [docs/prereqs.md](docs/prereqs.md): S3 bucket, IAM policy + IRSA role, public-subnet tags, dedicated arm64 NodePool
-- Oryo has added your AWS account ID to its ECR repository policies (contact your Oryo representative)
+- The AWS-side prerequisites in [customer/docs/prereqs.md](docs/prereqs.md): S3 bucket, IAM policy + IRSA role, public-subnet tags, dedicated arm64 NodePool
+- Oryo has added your AWS account ID to its ECR repository policies (contact your Oryo rep if your AWS account has not been provisioned access to our ECR images)
 
 Tools on your machine:
 
@@ -97,7 +83,7 @@ Tools on your machine:
 ## Quick start
 
 ```bash
-# 1. Provision the prerequisites in your AWS account per docs/prereqs.md
+# 1. Provision the prerequisites in your AWS account per customer/docs/prereqs.md
 #    (or have Oryo provision them on your behalf).
 
 # 2. Preflight — verifies the prereqs and (with the flag) creates the
@@ -114,7 +100,7 @@ $EDITOR values.yaml         # domain, cert ARN, role ARN, RDS host, etc.
 helm install oryo ./chart \
   --namespace oryo --create-namespace \
   --values values.yaml \
-  --wait --timeout 15m
+  --wait --timeout 10m
 
 # 5. Point DNS at the ALBs
 kubectl -n oryo get ingress
@@ -124,7 +110,7 @@ kubectl -n oryo get ingress
 curl -I https://app.<your-domain>/healthcheck
 ```
 
-See [docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
+See [customer/docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
 
 ## What `setup.sh` does
 
@@ -139,7 +125,7 @@ Checks:
 - A schedulable arm64 NodePool exists (Auto Mode `general-purpose` is amd64-only by default — see prereqs.md §4)
 - The 5 required k8s secrets exist in the target namespace
 
-Each `✗` points at the relevant section of [docs/prereqs.md](docs/prereqs.md).
+Each `✗` points at the relevant section of [customer/docs/prereqs.md](docs/prereqs.md).
 
 **Optional secret bootstrap.** Pass `--bootstrap-secrets` and the script generates + creates the 5 k8s secrets for you (session secret, `oryo-db-admin` from `.env`, three randomly-generated db-role passwords). Without the flag it only verifies they exist — bring your own (ESO, Vault, SealedSecrets, manual `kubectl`) if you prefer to manage secrets externally.
 

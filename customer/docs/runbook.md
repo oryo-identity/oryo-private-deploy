@@ -6,16 +6,16 @@ End-to-end bootstrap for installing Oryo in your own AWS account. Targets EKS Au
 
 ## Prerequisites — what you bring
 
-These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `setup.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[prereqs.md](prereqs.md)**.
+These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `setup.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[customer/docs/prereqs.md](prereqs.md)**.
 
 | Requirement | Notes |
 |---|---|
 | **AWS account** | With SSO + admin access for the account you'll deploy into. |
-| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [prereqs.md §4](prereqs.md). |
-| **S3 bucket, IAM role, subnet tags** | You create these — [prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
-| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [prereqs.md §5](prereqs.md). |
-| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [prereqs.md §6](prereqs.md). |
-| **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo representative if you haven't been onboarded yet. |
+| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [customer/docs/prereqs.md §4](prereqs.md). |
+| **S3 bucket, IAM role, subnet tags** | You create these — [customer/docs/prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
+| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [customer/docs/prereqs.md §5](prereqs.md). |
+| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [customer/docs/prereqs.md §6](prereqs.md). |
+| **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images. |
 
 `setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
 
@@ -23,14 +23,15 @@ These must already exist before you start. **The install kit creates nothing in 
 
 ## 0. Tools
 
-Install locally:
-- `aws` CLI (v2)
-- `kubectl`
-- `helm` (v3)
-- `eksctl` (used by `setup.sh` to create the IRSA role)
-- `jq` (used by `setup.sh` for NodePool patching)
-- `openssl` (system default; used by `setup.sh` to generate secrets)
-- `docker` (optional — only for local image verification)
+These tools need to be installed locally to successfully go through the full flow of this runbook:
+
+- `aws` CLI (v2) — auth + every AWS-side operation
+- `kubectl` — talk to your EKS cluster
+- `helm` (v3) — install + upgrade the chart
+- `eksctl` — only needed for the eksctl-path IRSA setup in [customer/docs/prereqs.md §2b](prereqs.md) (skip if you create the role manually)
+- `jq` — used by `setup.sh` to inspect Auto Mode NodePools during preflight
+- `openssl` — used by `setup.sh --bootstrap-secrets` to generate session + role passwords (system default works on macOS/Linux)
+- `docker` (optional) — only for local image verification
 
 ## 1. Connect
 
@@ -56,7 +57,7 @@ kubectl get nodepool 2>/dev/null
 
 ## 2. Provision prerequisites, then run the preflight
 
-The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
+The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[customer/docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
 
 Then run `setup.sh`, which **verifies** everything exists and prints the values you need:
 
@@ -100,7 +101,7 @@ Replace placeholders (search for `TODO`):
 - **`alb.ingress.kubernetes.io/certificate-arn`** — ACM cert ARN (from prereqs; 3 ingresses use it).
 - **Ingress hostnames** — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
 - **`dbInit.defaultTenant`** — your org name + owner email.
-- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum constraint). For production deploys use `prod`.
+- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum). **For now, set this to `stage`** for all private-deploy installs while the offering is still being hardened — that way private-deploy traffic is distinguishable from Oryo's own `prod` and we can roll back/adjust behavior per environment without disrupting customers. We'll graduate the recommendation to `prod` once the kit is GA.
 
 ## 4. `helm install`
 
@@ -108,12 +109,12 @@ Replace placeholders (search for `TODO`):
 helm install oryo ./chart \
   --namespace <NAMESPACE> --create-namespace \
   --values values.yaml \
-  --wait --timeout 15m
+  --wait --timeout 10m
 ```
 
 > If you bootstrapped secrets with `setup.sh --bootstrap-secrets`, the namespace already exists — `--create-namespace` is a harmless no-op.
 
-**Timeout matters.** Auto Mode dynamic node provisioning takes 2–5 min per node, plus image pull + container startup. The dbInit hook adds another minute. 5 min isn't enough; 10–15 min is safe.
+**Timeout matters.** First install on a cold cluster pulls images, provisions new arm64 nodes, runs the dbInit hook, then waits for all pods to become Ready — a single end-to-end pass that can take a few minutes. 10 minutes is usually plenty of headroom; bump it higher if your cluster is provisioning capacity from scratch.
 
 The `dbInit` hook (pre-install + pre-upgrade) connects to RDS as the admin user, creates the per-service Postgres roles using the passwords from the k8s Secrets, applies schema and RLS policies, seeds global rules, seeds the default tenant. Everything is idempotent, so it runs on every install and upgrade. **The target database must already exist** — use the default `postgres` database or create your own beforehand.
 
@@ -195,37 +196,21 @@ Open `https://app.<DOMAIN>` in a browser to access the dashboard.
 
 ## 7. Install a sensor (end-to-end verification)
 
-The real proof a deployment works: install a sensor on a device and confirm it intercepts AI traffic using the global rules seeded at install.
+The real proof a deployment works: install a sensor and confirm it intercepts AI traffic using the global rules seeded at install.
 
-1. In the dashboard: **Settings → Installation**. Copy the generated one-liner for your OS. It already includes `SENSOR_CONFIG_URL=https://api.<DOMAIN>/v1/sensor/config` pointing at *your* deployment, plus a registration token.
-2. Run it on the device. Expected output includes a config fetch like:
-   ```
-   Configuration fetched successfully  watch_domains=19  route_rules=37  message_rules=4
-   ```
-   Non-zero counts = your seeded global rules reached the sensor.
-3. **Trust the CA** (the install will tell you if it isn't trusted). Download the CA from **Settings → Installation → Download CA**, then on macOS:
-   ```bash
-   sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/Downloads/oryo-ca.pem
-   ```
-   Fully quit + reopen the browser afterward.
-4. Visit a watched site (e.g. `chatgpt.com`). It should load with **no TLS error** — the sensor's leaf cert chains to the now-trusted CA.
+Detailed instructions — registration token, install one-liner, CA download — live in the dashboard at **Settings → Installation**. This section is the high-level shape; follow the dashboard for the actual commands.
 
-### Sensor / CA gotchas — read this, it's where time gets lost
+### MDM fleet rollout (Intune / JAMF / etc.)
 
-- **The CA is per-tenant, not per-domain.** `CN=Oryo Sensor Root CA, OU=<tenantId>`. Switching domains is irrelevant; the OU (tenant) is what matters.
-- **The registration token and the CA download MUST be from the same tenant.** If you download the CA while viewing tenant A but install with a token minted under tenant B, the sensor presents leaves signed by B's CA while you trusted A's → `NET::ERR_CERT_AUTHORITY_INVALID`. Confirm they match:
-  ```bash
-  # CA the sensor actually uses (token from config.json):
-  TOKEN=$(sudo python3 -c "import json;print(json.load(open('/Library/Application Support/Oryo/config.json'))['registration']['resource_token'])")
-  curl -fsS -H "Authorization: Bearer $TOKEN" https://api.<DOMAIN>/v1/sensor/ca | openssl x509 -noout -subject
-  # The CA you trusted:
-  openssl x509 -in ~/Downloads/oryo-ca.pem -noout -subject
-  ```
-  The `OU=` must match. If not, trust the one the sensor uses (the curl output above) or re-mint the token from the right tenant.
-- **`security verify-cert` passing ≠ the sensor accepting it.** They can disagree if the sensor fetches a different cert (different tenant). Compare the actual SHA-256, not just "is some Oryo CA trusted."
-- **Re-deploys mint a new CA.** A full teardown/rebuild creates a new tenant + new root CA. Any CA you trusted before is now stale — re-download.
-- **macOS: imported ≠ trusted.** Double-clicking adds to Keychain without a trust setting. Use `add-trusted-cert -r trustRoot` (as above), and restart the browser — it snapshots the trust store at launch.
-- **Firefox uses its own trust store**, not the OS one — import the CA in Firefox settings separately.
+1. **Push the Oryo CA** from **Settings → Installation → Download CA** as a trusted root certificate via your MDM's standard certificate-distribution profile.
+2. **Push the install one-liner** (also from **Settings → Installation**) via your MDM's run-script policy.
+3. **Confirm** — the dashboard's Devices page populates as sensors register.
+
+### Manual testing (one device)
+
+Download the CA from **Settings → Installation → Download CA**, add it to your system's trust store, then run the install one-liner from the same page. Visit a watched site (e.g. `chatgpt.com`) — should load with no TLS error and show up in the dashboard within a few seconds.
+
+> **NOTE:** Each tenant has its own root CA. If you tear down and reinstall the platform, the CA regenerates — re-download and re-trust before retesting.
 
 ---
 
@@ -235,7 +220,7 @@ The real proof a deployment works: install a sensor on a device and confirm it i
 helm upgrade oryo ./chart \
   --namespace <NAMESPACE> \
   --values values.yaml \
-  --wait --timeout 15m
+  --wait --timeout 10m
 ```
 
 The `dbInit` hook re-runs on every upgrade (idempotent — schema additions are `IF NOT EXISTS`).
@@ -260,7 +245,7 @@ No multi-key / overlap window is supported. If user-facing downtime matters, pic
 
 ### Per-service DB role passwords (`oryo-db-{dashboard,gateway,worker}`)
 
-The chart's `dbInit` hook **does not** re-issue `ALTER ROLE … WITH PASSWORD` on existing roles (deliberate — `init-roles.ts` explains why). So rotation requires syncing the Postgres role's password with the new k8s Secret yourself, in this order:
+The chart's `dbInit` hook **does not** re-issue `ALTER ROLE … WITH PASSWORD` on existing roles — re-doing it on every helm upgrade churns the Postgres catalog for no benefit when the k8s Secret is stable, so password rotation is treated as a separate explicit operation. That means rotation requires syncing the Postgres role's password with the new k8s Secret yourself, in this order:
 
 1. Generate the new password.
 2. `ALTER ROLE "oryo-<service>" WITH PASSWORD '<new>'` against RDS (use a debug pod that mounts `oryo-db-admin`, see "Ad-hoc DB access" below).
@@ -305,32 +290,9 @@ The pod is ephemeral (`--rm`) and never persists the password to disk. Quit with
 
 ## Gotchas
 
-### Auth / accounts
-- **Wrong AWS account via SSO.** Always run `aws sts get-caller-identity` before any state-changing command. Cert/domain/IAM created in the wrong account = restart in the right one.
+Standard AWS / k8s / Helm operational gotchas (wrong-account SSO, ACM `PENDING_VALIDATION`, RDS security group reachability for `dbInit`, etc.) aren't repeated here. These are the Oryo-specific quirks that have actually surprised people:
 
-### ACM cert
-- **Cert stuck in `PENDING_VALIDATION`.** Requesting a cert does NOT validate it. Use the "Create records in Route 53" console button (or create the validation CNAMEs manually with the CLI).
-
-### EKS Auto Mode
-
-EKS Auto Mode shifts a lot of plumbing AWS-side. Most of it Just Works™, but the parts that don't tend to be silent / non-obvious:
-
-- **NodePool defaults to amd64 only.** The `general-purpose` NodePool that ships with Auto Mode only provisions amd64. Oryo's images are arm64. Without a patch (now in `setup.sh`), every workload pod stays `Pending` forever with:
-  ```
-  incompatible requirements, key kubernetes.io/arch, In [arm64] not in [amd64]
-  ```
-  Diagnose with `kubectl describe pod <pending-pod>` — the FailedScheduling event spells it out.
-- **Existing arm64 nodes are tainted `CriticalAddonsOnly:NoSchedule`.** Those belong to the `system` NodePool, reserved for cluster add-ons. They look like usable workload nodes in `kubectl get nodes` — they're not.
-- **Manual ALB controller NEVER on Auto Mode.** Don't install the standalone `aws-load-balancer-controller` Helm chart on Auto Mode. It crashes with `ec2imds GetMetadata` timeouts. The chart's IngressClass routes to Auto Mode's built-in controller (`controller: eks.amazonaws.com/alb`) — that's what you want.
-- **ALB controller needs subnets tagged for auto-discovery.** Public subnets need `kubernetes.io/role/elb=1`. Without this, Ingresses sit forever with empty `ADDRESS` and events say `Failed build model due to couldn't auto-discover subnets`. `setup.sh` tags these now.
-- **Auto Mode provisioning is slow.** Each new node = 2–5 min from "pod Pending" → "node Ready → pod scheduled → container running". `--wait --timeout 15m` is the safe default.
-- **`group.name` ingress annotation may not merge into a single ALB.** The chart's `alb.ingress.kubernetes.io/group.name: oryo` annotation is intended to share one ALB across all 3 ingresses. With Auto Mode's built-in controller we've observed 3 separate ALBs. Functional but slightly more billing.
-
-### Database
-
-- **RDS unreachable from cluster.** dbInit hangs if the RDS security group doesn't allow inbound from the EKS pod CIDR. Fix: ensure the cluster's SG (or workload node SG) is in RDS's inbound allowlist on port 5432.
-
-### Helm
-
-- **`--dry-run` prints NOTES.** Don't mistake dry-run output for a successful install. `helm list -A` is the ground truth.
-- **dbInit hook failure fails the install/upgrade.** When `dbInit` fails, helm rolls back and you can't `kubectl logs` after the fact (the hook job is cleaned up). Either capture logs live, or run with `--no-hooks` to debug the rest, then run dbInit separately.
+- **Don't patch the built-in `general-purpose` NodePool to add arm64.** Auto Mode reconciles it back to default. Use the dedicated `oryo-arm64` NodePool from [customer/docs/prereqs.md §4](prereqs.md).
+- **Don't install the standalone `aws-load-balancer-controller`.** Auto Mode ships its own ALB controller; the standalone one crashes with `ec2imds GetMetadata` timeouts and fights it for ingress reconciliation. The chart's `IngressClass` already routes to the built-in controller.
+- **`group.name` ingress annotation doesn't merge ALBs in practice.** Chart sets `alb.ingress.kubernetes.io/group.name: oryo` intending one shared ALB across the 3 ingresses; Auto Mode currently provisions one per ingress. Functional, just slightly more billing.
+- **`dbInit` hook failure rolls back the install** and the Job is cleaned up automatically — post-mortem logs are gone. Either stream `kubectl -n <NS> logs job/oryo-oryo-platform-db-init -f` during the install, or use `--no-hooks` to debug the rest separately and run dbInit manually.
