@@ -118,26 +118,33 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
-# prereqs.md §4 — allow arm64 in the Auto Mode NodePool
+# prereqs.md §4 — dedicated arm64 NodePool
 #   WHY: Oryo images are arm64 (Graviton). Auto Mode's default general-purpose
-#   NodePool only provisions amd64, so pods stay Pending with an arch
-#   mismatch until arm64 is added to its allowed values.
+#   NodePool only provisions amd64. Do NOT patch general-purpose — Auto Mode
+#   reconciles its built-in pools back to defaults, so the patch reverts and
+#   pods go Pending again. A dedicated custom NodePool is durable.
 # ──────────────────────────────────────────────────────────────────────────
-if kubectl get nodepool general-purpose >/dev/null 2>&1; then
-  log "Allow arm64 in general-purpose NodePool"
-  CUR=$(kubectl get nodepool general-purpose -o json \
-    | jq -r '.spec.template.spec.requirements[] | select(.key=="kubernetes.io/arch") | .values | join(",")')
-  if echo "$CUR" | grep -q arm64; then
-    log "  already allowed ($CUR)"
-  else
-    kubectl get nodepool general-purpose -o json \
-      | jq '.spec.template.spec.requirements |= map(if .key=="kubernetes.io/arch" then .values=(.values+["arm64"]|unique) else . end)
-            | {apiVersion,kind,metadata:{name:.metadata.name},spec:.spec}' \
-      | kubectl apply -f - >/dev/null
-    log "  patched (arm64 + amd64)"
-  fi
+if kubectl get nodepool >/dev/null 2>&1; then
+  log "Dedicated arm64 NodePool (oryo-arm64)"
+  kubectl apply -f - >/dev/null <<'EOF'
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: oryo-arm64
+spec:
+  template:
+    spec:
+      requirements:
+        - { key: kubernetes.io/arch, operator: In, values: ["arm64"] }
+        - { key: kubernetes.io/os, operator: In, values: ["linux"] }
+        - { key: karpenter.sh/capacity-type, operator: In, values: ["on-demand"] }
+      nodeClassRef: { group: eks.amazonaws.com, kind: NodeClass, name: default }
+  limits:
+    cpu: "1000"
+EOF
+  log "  applied"
 else
-  log "No Auto Mode NodePool — ensure an arm64 node group exists (classic)."
+  log "No Auto Mode NodePools — ensure an arm64 node group exists (classic)."
 fi
 
 # ──────────────────────────────────────────────────────────────────────────

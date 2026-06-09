@@ -57,7 +57,7 @@ kubectl config current-context >/dev/null 2>&1 && ok "kubectl context: $(kubectl
 # ----- 1. S3 bucket --------------------------------------------------------
 
 log "S3 object-storage bucket"
-if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+if aws s3api head-bucket --bucket "$BUCKET_NAME" >/dev/null 2>&1; then
   ok "bucket $BUCKET_NAME exists"
 else
   bad "bucket $BUCKET_NAME not found — see docs/prereqs.md §1"
@@ -89,14 +89,21 @@ fi
 
 # ----- 4. NodePool arm64 (Auto Mode) ---------------------------------------
 
-log "Node architecture"
-if kubectl get nodepool general-purpose >/dev/null 2>&1; then
-  ARCH=$(kubectl get nodepool general-purpose -o json \
-    | jq -r '.spec.template.spec.requirements[] | select(.key=="kubernetes.io/arch") | .values | join(",")' 2>/dev/null || echo "")
-  echo "$ARCH" | grep -q arm64 && ok "Auto Mode NodePool allows arm64 ($ARCH)" \
-    || bad "general-purpose NodePool does not allow arm64 — see docs/prereqs.md §4"
+log "Node architecture (arm64)"
+if kubectl get nodepool >/dev/null 2>&1; then
+  # Need a NodePool that allows arm64 AND is schedulable by workloads (no
+  # NoSchedule taint — the built-in `system` pool allows arm64 but is tainted
+  # CriticalAddonsOnly, so it doesn't count). A dedicated arm64 NodePool is
+  # durable; patching general-purpose isn't (Auto Mode reverts it).
+  ARM_POOL=$(kubectl get nodepool -o json 2>/dev/null | jq -r '
+    .items[]
+    | select([.spec.template.spec.requirements[] | select(.key=="kubernetes.io/arch") | .values[]] | index("arm64"))
+    | select(((.spec.template.spec.taints // []) | map(select(.effect=="NoSchedule")) | length) == 0)
+    | .metadata.name' | head -1)
+  [[ -n "$ARM_POOL" ]] && ok "schedulable arm64 NodePool: '$ARM_POOL'" \
+    || bad "no schedulable arm64 NodePool — see docs/prereqs.md §4 (create a dedicated arm64 NodePool)"
 else
-  warn "no Auto Mode NodePool (classic node groups) — ensure an arm64 node group exists"
+  warn "no Auto Mode NodePools (classic node groups) — ensure an arm64 node group exists"
 fi
 
 # ----- 5. K8s secrets ------------------------------------------------------

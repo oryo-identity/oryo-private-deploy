@@ -115,19 +115,41 @@ aws ec2 create-tags --region <REGION> --resources $PUBLIC_SUBNETS \
 
 ---
 
-## 4. Allow arm64 in the Auto Mode NodePool
+## 4. Provide arm64 nodes
 
-Oryo's images are arm64 (Graviton). EKS Auto Mode's default `general-purpose` NodePool only provisions amd64, so pods stay `Pending` until you allow arm64.
+Oryo's images are arm64 (Graviton). EKS Auto Mode's default `general-purpose` NodePool only provisions amd64, so pods stay `Pending` until arm64 nodes are available.
+
+**Create a dedicated arm64 NodePool** — do *not* edit `general-purpose`. Auto Mode reconciles its built-in NodePools back to defaults, so a patch to `general-purpose` silently reverts (and your pods go `Pending` again later). A separate NodePool is durable:
 
 ```bash
-kubectl get nodepool general-purpose -o json \
-  | jq '.spec.template.spec.requirements |= map(
-        if .key=="kubernetes.io/arch" then .values=(.values+["arm64"]|unique) else . end)
-        | {apiVersion, kind, metadata:{name:.metadata.name}, spec:.spec}' \
-  | kubectl apply -f -
+kubectl apply -f - <<'EOF'
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: oryo-arm64
+spec:
+  template:
+    spec:
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: default
+  limits:
+    cpu: "1000"
+EOF
 ```
 
-(If your cluster uses classic managed node groups instead of Auto Mode, ensure at least one arm64 node group exists.)
+(Classic managed node groups instead of Auto Mode? Ensure at least one arm64 node group exists.)
 
 ---
 
