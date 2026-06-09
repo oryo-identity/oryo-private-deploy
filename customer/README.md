@@ -68,7 +68,7 @@ You provide:
 - Postgres database (RDS recommended) reachable from the cluster
 - A domain you control, with a Route 53 hosted zone in the same AWS account
 - An ACM certificate for `*.<your-domain>` in the same region as the cluster (terminates HTTPS at the ALBs)
-- The AWS-side prerequisites in [customer/docs/prereqs.md](docs/prereqs.md): S3 bucket, IAM policy + IRSA role, public-subnet tags, dedicated arm64 NodePool
+- The AWS-side prerequisites in [customer/docs/prereqs.md](docs/prereqs.md): S3 bucket, IAM policy + IRSA role (S3 + Bedrock), public-subnet tags, dedicated arm64 NodePool, Bedrock model access (Claude 3 Haiku + Nova Micro) enabled in the cluster's region
 - Oryo has added your AWS account ID to its ECR repository policies (contact your Oryo rep if your AWS account has not been provisioned access to our ECR images)
 
 Tools on your machine:

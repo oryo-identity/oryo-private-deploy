@@ -31,24 +31,36 @@ Put the name in `values.yaml` → `global.env.DEFAULT_BUCKET`.
 
 ---
 
-## 2. IAM policy + role (IRSA — lets the pods reach the bucket)
+## 2. IAM policy + role (IRSA — lets the pods reach S3 + Bedrock)
 
 The pods assume an IAM role via IRSA. You create the **role**; the Helm chart creates the matching k8s ServiceAccount and annotates it with the role ARN.
 
-### 2a. Permission policy — S3 access scoped to your bucket
+### 2a. Permission policy — S3 + Bedrock, scoped
+
+Two statements: one for the object-storage bucket, one for the Bedrock foundation models the agents call. The Bedrock action covers the `Converse` API used by every agent (`anthropic.claude-3-haiku-20240307-v1:0` and `amazon.nova-micro-v1:0`). See §5 for enabling **model access** in your account — that's separate from the IAM grant.
 
 ```bash
 cat > /tmp/oryo-workload-policy.json <<EOF
 {
   "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-    "Resource": [
-      "arn:aws:s3:::<BUCKET_NAME>",
-      "arn:aws:s3:::<BUCKET_NAME>/*"
-    ]
-  }]
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::<BUCKET_NAME>",
+        "arn:aws:s3:::<BUCKET_NAME>/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:Converse"],
+      "Resource": [
+        "arn:aws:bedrock:<REGION>::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+        "arn:aws:bedrock:<REGION>::foundation-model/amazon.nova-micro-v1:0"
+      ]
+    }
+  ]
 }
 EOF
 
@@ -186,7 +198,36 @@ EOF
 
 ---
 
-## 5. Postgres database
+## 5. Bedrock model access (per-region opt-in)
+
+Bedrock foundation models are **opt-in per account, per region** — separate from the IAM grant in §2. Without it, agent calls fail with `AccessDeniedException` even when IAM is correct.
+
+Several Oryo features call Bedrock from the gateway/workers (auto-classification of prompts and tool uses, active discovery of new LLM endpoints, the DLP policy function, the parser fallback, enrichment). They **degrade silently** if model access is missing — installs still succeed, the proxy still intercepts and policies still match on regex/allowlist rules, but auto-tagging, discovery, and the DLP policy stop working. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features) for the per-feature breakdown.
+
+**Models to enable** (both must be on in `<REGION>`):
+
+| Model | ID |
+|---|---|
+| Anthropic Claude 3 Haiku | `anthropic.claude-3-haiku-20240307-v1:0` |
+| Amazon Nova Micro | `amazon.nova-micro-v1:0` |
+
+**Enable in the console:** Bedrock → **Model access** in `<REGION>` → request the two models above. Anthropic models require a one-time use-case form (usually approved within minutes); Amazon models are instant.
+
+**Confirm afterwards:**
+
+```bash
+aws bedrock list-foundation-models --region <REGION> \
+  --query 'modelSummaries[?modelId==`anthropic.claude-3-haiku-20240307-v1:0` || modelId==`amazon.nova-micro-v1:0`].[modelId,modelLifecycle.status]' \
+  --output table
+```
+
+Both rows should be `ACTIVE`. If a row is missing, the model isn't available in `<REGION>` — pick a Bedrock-supported region or set `global.env.AWS_REGION` in `values.yaml` to point the agents at a region that has them (IRSA still uses the cluster's STS endpoint; only the Bedrock SDK target moves).
+
+> **NOTE:** `list-foundation-models` shows availability, not your account's opt-in state. The truth check is a real `bedrock-runtime invoke-model` call — if model access is missing you'll get `AccessDeniedException: You don't have access to the model with the specified model ID`. `setup.sh` runs a smoke call against Haiku 3 and reports the result.
+
+---
+
+## 6. Postgres database
 
 Your RDS instance must:
 - Be reachable from the cluster's VPC on port 5432 (security group allows the cluster).
@@ -196,7 +237,7 @@ You provide the endpoint (`global.db.host`) and master credentials (in `.env`, u
 
 ---
 
-## 6. ACM certificate + Route 53 hosted zone
+## 7. ACM certificate + Route 53 hosted zone
 
 Each Oryo service is served over HTTPS at its own subdomain (`app.<DOMAIN>`, `api.<DOMAIN>`, `gateway.<DOMAIN>`). The ALBs terminate TLS using a **wildcard ACM certificate** you provide.
 

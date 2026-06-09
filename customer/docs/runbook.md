@@ -13,8 +13,9 @@ These must already exist before you start. **The install kit creates nothing in 
 | **AWS account** | With SSO + admin access for the account you'll deploy into. |
 | **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [customer/docs/prereqs.md §4](prereqs.md). |
 | **S3 bucket, IAM role, subnet tags** | You create these — [customer/docs/prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
-| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [customer/docs/prereqs.md §5](prereqs.md). |
-| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [customer/docs/prereqs.md §6](prereqs.md). |
+| **Bedrock model access** | Per-region opt-in for Claude 3 Haiku + Nova Micro — [customer/docs/prereqs.md §5](prereqs.md). Optional in the sense the install still succeeds without it, but auto-classification, active discovery, and the DLP policy go dark — see [Bedrock-dependent features](#bedrock-dependent-features). |
+| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [customer/docs/prereqs.md §6](prereqs.md). |
+| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [customer/docs/prereqs.md §7](prereqs.md). |
 | **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images. |
 
 `setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
@@ -101,7 +102,7 @@ Replace placeholders (search for `TODO`):
 - **`alb.ingress.kubernetes.io/certificate-arn`** — ACM cert ARN (from prereqs; 3 ingresses use it).
 - **Ingress hostnames** — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
 - **`dbInit.defaultTenant`** — your org name + owner email.
-- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum). **For now, set this to `stage`** for all private-deploy installs while the offering is still being hardened — that way private-deploy traffic is distinguishable from Oryo's own `prod` and we can roll back/adjust behavior per environment without disrupting customers. We'll graduate the recommendation to `prod` once the kit is GA.
+- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum). **Set this to `stage`** for every private-deploy install. `stage` is the private-deploy value — it's how the platform code distinguishes customer-managed clusters from Oryo's own infra so we can add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
 
 ## 4. `helm install`
 
@@ -296,3 +297,28 @@ Standard AWS / k8s / Helm operational gotchas (wrong-account SSO, ACM `PENDING_V
 - **Don't install the standalone `aws-load-balancer-controller`.** Auto Mode ships its own ALB controller; the standalone one crashes with `ec2imds GetMetadata` timeouts and fights it for ingress reconciliation. The chart's `IngressClass` already routes to the built-in controller.
 - **`group.name` ingress annotation doesn't merge ALBs in practice.** Chart sets `alb.ingress.kubernetes.io/group.name: oryo` intending one shared ALB across the 3 ingresses; Auto Mode currently provisions one per ingress. Functional, just slightly more billing.
 - **`dbInit` hook failure rolls back the install** and the Job is cleaned up automatically — post-mortem logs are gone. Either stream `kubectl -n <NS> logs job/oryo-oryo-platform-db-init -f` during the install, or use `--no-hooks` to debug the rest separately and run dbInit manually.
+- **Bedrock failures degrade silently.** Without model access or IRSA bedrock perms, classification / active discovery / DLP / parser fallback / enricher quietly stop producing output — install still succeeds, regex/allowlist rules still match. See [Bedrock-dependent features](#bedrock-dependent-features) below for the per-feature breakdown and how to tell IAM-missing from model-access-missing apart.
+
+### Bedrock-dependent features
+
+Several gateway/worker code paths call Bedrock (Claude 3 Haiku for classification + discovery + DLP + parser fallback, Nova Micro for enrichment). The platform is built to **degrade silently** if Bedrock is unreachable — the install succeeds, the proxy intercepts, regex/allowlist policy rules still match. What stops working:
+
+| Surface | When Bedrock is missing |
+|---|---|
+| **DLP policy function** | Returns `undefined` with a warning log. Rules of type "DLP scan" never trigger; other policy rules unaffected. |
+| **Gateway active discovery** (`POST /active-discovery`, `/inference-discovery`) | 5xx with `AccessDeniedException`. New LLM endpoints don't get auto-detected; you can still add interception rules by hand. |
+| **Worker classification jobs** (`tool-classification`, `tool-use-classification`, prompt classification) | Throws inside `pMap`; tool uses + prompts stay untagged. Dashboard shows raw conversations with no category badges. |
+| **Parser fallback** | Deterministic parsing still works; when it can't, the prompt renders raw instead of structured. |
+| **Enricher** | Enrichment metadata absent. |
+
+Two failure modes look the same in the dashboard (no tags, no discovery) but have different causes:
+- **IAM**: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel` → fix the IRSA policy ([customer/docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa--lets-the-pods-reach-s3--bedrock)).
+- **Model access**: same call returns `AccessDeniedException: You don't have access to the model with the specified model ID` → enable model access in the Bedrock console ([customer/docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
+
+Quick check from inside the cluster:
+
+```bash
+kubectl -n <NS> exec deploy/oryo-gateway -- env | grep -E 'AWS_REGION|AWS_ROLE_ARN'
+# AWS_REGION should match a region where Haiku 3 + Nova Micro are enabled.
+# AWS_ROLE_ARN should be the IRSA role you created in prereqs §2.
+```
