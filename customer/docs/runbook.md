@@ -14,8 +14,7 @@ These must already exist before you start. **The install kit creates nothing in 
 | **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [prereqs.md §4](prereqs.md). |
 | **S3 bucket, IAM role, subnet tags** | You create these — [prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
 | **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [prereqs.md §5](prereqs.md). |
-| **Domain + Route 53 hosted zone** | Registered in Route 53, in the same AWS account. |
-| **ACM certificate** | Wildcard cert for `*.<your-domain>` in the cluster's region, `ISSUED`. ARN goes into `values.yaml`. |
+| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [prereqs.md §6](prereqs.md). |
 | **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo representative if you haven't been onboarded yet. |
 
 `setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
@@ -73,10 +72,10 @@ It prints a ✓/✗ for each check; if anything's missing it points you at the r
 
 ### K8s secrets
 
-The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db-admin`, `oryo-db-dashboard`, `oryo-db-gateway`, `oryo-db-worker` (+ optional `oryo-resend-api-key`). Two ways:
+The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db-admin`, `oryo-db-dashboard`, `oryo-db-gateway`, `oryo-db-worker`, `oryo-resend-api-key`. Two ways:
 
 - **Bring your own** (ESO / Vault / SealedSecrets / manual `kubectl`) — `setup.sh` verifies they exist.
-- **Let the script generate them** — fill `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD` (and optionally `RESEND_API_KEY`) in `.env`, then:
+- **Let the script generate them** — fill `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD`, and `RESEND_API_KEY` in `.env`, then:
   ```bash
   ./scripts/setup.sh --bootstrap-secrets
   ```
@@ -84,7 +83,7 @@ The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db
 
 > **Database note:** the target Postgres database must already exist (default `postgres` works, or create your own and name it in `values.yaml` → `global.db.database`). dbInit creates the per-service roles + schema, not the database itself.
 
-> **Email note:** `values.example.yaml` enables Resend by default. If you don't set up the `oryo-resend-api-key` secret, remove the `dashboard.externalSecrets` block from `values.yaml`, or the dashboard pod won't start.
+> **Email note:** `RESEND_API_KEY` is required — the dashboard emails login codes via Resend (without it, users can't sign in). Use your own Resend API key (https://resend.com) or ask the Oryo team to provide one for your install.
 
 ## 3. Fill in `values.yaml`
 
@@ -190,7 +189,7 @@ curl -I https://api.<DOMAIN>/healthcheck
 
 Open `https://app.<DOMAIN>` in a browser to access the dashboard.
 
-> **Login email:** if you set `RESEND_API_KEY` in `.env` AND uncommented the `dashboard.externalSecrets.RESEND_API_KEY` block in `values.yaml`, login codes are emailed via Resend. Otherwise codes are generated but never delivered — you'll have to SQL the `login_events` table to read them. SMTP / SES support is in flight.
+> **Login email:** login codes are emailed via Resend using `RESEND_API_KEY` (required, set in `.env`; the chart wires the corresponding `oryo-resend-api-key` secret into the dashboard pod). SMTP / SES support is in flight.
 
 ---
 
@@ -242,6 +241,65 @@ helm upgrade oryo ./chart \
 The `dbInit` hook re-runs on every upgrade (idempotent — schema additions are `IF NOT EXISTS`).
 
 To skip the dbInit hook on upgrades (faster), set `dbInit.enabled: false` in `values.yaml` before running `helm upgrade`.
+
+---
+
+## Secret rotation
+
+The chart consumes 6 k8s Secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`). Rotating them in production has different choreography depending on which one — these are the Oryo-specific gotchas. Coordinate with your secrets store (Vault, AWS Secrets Manager, ESO, etc.) for the actual key delivery; the dance below is what the chart expects.
+
+### `oryo-session-secret`
+
+Rotating it **logs every signed-in user out**. The dashboard verifies incoming cookies with the current key; cookies signed with the old key fail HMAC verification and the user gets bounced to login.
+
+Procedure:
+1. Update the Secret with the new value.
+2. Restart dashboard pods (`kubectl rollout restart deploy/oryo-oryo-platform-dashboard`).
+
+No multi-key / overlap window is supported. If user-facing downtime matters, pick a low-traffic window.
+
+### Per-service DB role passwords (`oryo-db-{dashboard,gateway,worker}`)
+
+The chart's `dbInit` hook **does not** re-issue `ALTER ROLE … WITH PASSWORD` on existing roles (deliberate — `init-roles.ts` explains why). So rotation requires syncing the Postgres role's password with the new k8s Secret yourself, in this order:
+
+1. Generate the new password.
+2. `ALTER ROLE "oryo-<service>" WITH PASSWORD '<new>'` against RDS (use a debug pod that mounts `oryo-db-admin`, see "Ad-hoc DB access" below).
+3. Update the k8s Secret with the same new value.
+4. Restart the affected service pods.
+
+If you do step 3 before step 2, the new pods crashloop on `28P01 invalid_password` until step 2 lands. If you do step 2 before step 4, the old pods (still using the old password) crashloop on `28P01` until they restart. Either ordering works — just don't leave a gap between them.
+
+### `oryo-db-admin` (RDS master)
+
+Used only by the `dbInit` hook during `helm install` / `helm upgrade` — long-running pods don't mount it.
+
+Procedure:
+1. Rotate the password on the RDS instance (`aws rds modify-db-instance --master-user-password`).
+2. Update the k8s Secret.
+3. Next `helm upgrade` picks it up. (You don't need to bounce anything.)
+
+If the rotation happens **between** upgrades, no pod is affected — only the next dbInit run will use it.
+
+### `oryo-resend-api-key`
+
+Rotate on the Resend side, update the k8s Secret, restart dashboard pods. Mid-rotation in-flight login codes may fail to send; users will retry.
+
+### Ad-hoc DB access (for the `ALTER ROLE` step)
+
+```bash
+NS=<NAMESPACE>
+ADMIN_PW=$(kubectl -n $NS get secret oryo-db-admin -o jsonpath='{.data.password}' | base64 -d)
+RDS=$(kubectl -n $NS get configmap oryo-oryo-platform-env -o jsonpath='{.data.DB_HOST}' 2>/dev/null \
+       || echo '<your-rds-endpoint>')
+
+kubectl -n $NS run psql-debug --rm -it --restart=Never --image=postgres:15 \
+  --env="PGPASSWORD=$ADMIN_PW" -- \
+  psql "host=$RDS user=postgres dbname=postgres sslmode=require"
+```
+
+The pod is ephemeral (`--rm`) and never persists the password to disk. Quit with `\q` and the pod is gone.
+
+> **NOTE:** k8s Secrets are base64 (not encrypted) in etcd by default. For production, enable EKS envelope encryption with KMS — see [AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/enable-kms.html). Without it, anyone with `secrets/get` RBAC sees the plaintext.
 
 ---
 

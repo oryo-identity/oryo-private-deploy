@@ -38,6 +38,7 @@ source "$ENV_FILE"
 : "${BUCKET_NAME:?set in .env}"
 export AWS_PROFILE AWS_REGION
 ROLE_NAME="${ROLE_NAME:-OryoWorkloadRole}"
+SENSOR_EXECUTABLES_BUCKET="${SENSOR_EXECUTABLES_BUCKET:-binaries-pub-prod-us-east-1-oryo}"
 
 ok()   { printf "\033[1;32m  ✓\033[0m %s\n" "$*"; }
 bad()  { printf "\033[1;31m  ✗\033[0m %s\n" "$*"; FAILED=1; }
@@ -108,22 +109,51 @@ fi
 
 # ----- 5. K8s secrets ------------------------------------------------------
 
-REQUIRED_SECRETS=(oryo-session-secret oryo-db-admin oryo-db-dashboard oryo-db-gateway oryo-db-worker)
+REQUIRED_SECRETS=(oryo-session-secret oryo-db-admin oryo-db-dashboard oryo-db-gateway oryo-db-worker oryo-resend-api-key)
 
 if [[ "$BOOTSTRAP_SECRETS" == true ]]; then
   log "Bootstrapping k8s secrets (--bootstrap-secrets)"
   : "${DB_ADMIN_USER:?set in .env (needed to create oryo-db-admin)}"
   : "${DB_ADMIN_PASSWORD:?set in .env (needed to create oryo-db-admin)}"
+  : "${RESEND_API_KEY:?set in .env (needed to create oryo-resend-api-key — use your own Resend key or ask the Oryo team)}"
   kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+  GENERATED=()
+  # Use the provided value (.env override) when set; otherwise generate one
+  # and remember it for the post-run hint. Setting these in .env makes
+  # subsequent reinstalls against the same Postgres idempotent — k8s Secret
+  # passwords stay aligned with the existing Postgres roles.
+  gen() { openssl rand -base64 24 | tr -d '/+=' | head -c 32; }
+  resolve() {
+    local var="$1" default; default="$(gen)"
+    if [[ -z "${!var:-}" ]]; then
+      GENERATED+=("$var=$default")
+      printf '%s' "$default"
+    else
+      printf '%s' "${!var}"
+    fi
+  }
   mk() { local n="$1"; shift
     kubectl -n "$NAMESPACE" get secret "$n" >/dev/null 2>&1 && ok "$n exists" \
       || { kubectl -n "$NAMESPACE" create secret generic "$n" "$@" >/dev/null; ok "$n created"; }; }
-  mk oryo-session-secret --from-literal=value="$(openssl rand -hex 32)"
-  mk oryo-db-admin --from-literal=username="$DB_ADMIN_USER" --from-literal=password="$DB_ADMIN_PASSWORD"
-  for r in dashboard gateway worker; do
-    mk "oryo-db-$r" --from-literal=password="$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
-  done
-  [[ -n "${RESEND_API_KEY:-}" ]] && mk oryo-resend-api-key --from-literal=value="$RESEND_API_KEY"
+
+  SESSION_VAL=$(resolve SESSION_SECRET)
+  DASH_VAL=$(resolve DASHBOARD_USER_PASSWORD)
+  GW_VAL=$(resolve GATEWAY_USER_PASSWORD)
+  WORK_VAL=$(resolve WORKER_USER_PASSWORD)
+
+  mk oryo-session-secret --from-literal=value="$SESSION_VAL"
+  mk oryo-db-admin       --from-literal=username="$DB_ADMIN_USER" --from-literal=password="$DB_ADMIN_PASSWORD"
+  mk oryo-db-dashboard   --from-literal=password="$DASH_VAL"
+  mk oryo-db-gateway     --from-literal=password="$GW_VAL"
+  mk oryo-db-worker      --from-literal=password="$WORK_VAL"
+  mk oryo-resend-api-key --from-literal=value="$RESEND_API_KEY"
+
+  if (( ${#GENERATED[@]} > 0 )); then
+    warn "Generated random values for: ${GENERATED[*]%%=*}"
+    warn "Save these to .env so the next reinstall keeps the same Postgres role passwords:"
+    printf '       %s\n' "${GENERATED[@]}"
+  fi
 else
   log "K8s secrets (verify; pass --bootstrap-secrets to generate)"
   for s in "${REQUIRED_SECRETS[@]}"; do
@@ -150,6 +180,7 @@ Plug these into values.yaml:
       eks.amazonaws.com/role-arn: $ROLE_ARN
 
   global.env.DEFAULT_BUCKET: $BUCKET_NAME
+  api.env.SENSOR_EXECUTABLES_BUCKET: $SENSOR_EXECUTABLES_BUCKET
 
 Then fill the rest (domain, RDS host, cert ARN, ingress hosts, default tenant)
 and install:
