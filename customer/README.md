@@ -17,35 +17,46 @@ flowchart LR
 
     subgraph CUST["Customer AWS account"]
         direction TB
-        ING["<b>3 ALBs</b> · wildcard ACM cert<br/>app.&lt;DOMAIN&gt; · api.&lt;DOMAIN&gt; · gateway.&lt;DOMAIN&gt;"]
+        subgraph ING["3 ALBs · wildcard ACM cert"]
+            direction TB
+            ALB_APP[app.&lt;DOMAIN&gt;]
+            ALB_API[api.&lt;DOMAIN&gt;]
+            ALB_GW[gateway.&lt;DOMAIN&gt;]
+        end
         PODS["<b>EKS Auto Mode · arm64 pods</b><br/>dashboard · api · gateway · workers"]
         DATA["<b>Data plane</b><br/>RDS Postgres · S3 object storage"]
         ING --> PODS --> DATA
     end
 
-    subgraph THIRD["Third-party + Oryo distribution"]
-        direction TB
+    subgraph EXTDEPS["External dependencies"]
         RESEND[(Resend SMTP)]
-        ECR[(Oryo ECR<br/>container images)]
-        BIN[(Oryo S3<br/>sensor binaries)]
     end
 
-    BROWSER --> ING
-    SENSOR --> ING
-    PODS -. image pull .-> ECR
+    subgraph ORYO["Oryo · cross-account"]
+        direction TB
+        ECR[(ECR<br/>container images)]
+        BIN[(S3<br/>sensor binaries)]
+    end
+
+    BROWSER --> ALB_APP
+    SENSOR --> ALB_GW
+    SENSOR -. installer fetch .-> ALB_API
+    SENSOR -. installer bytes .-> BIN
     PODS -. login emails .-> RESEND
-    SENSOR -. installer download .-> BIN
+    PODS -. image pull .-> ECR
 
     classDef cust fill:#f0fff4,stroke:#3a7a4a,color:#0a3a1a
-    classDef third fill:#fff5e6,stroke:#9c6b1d,color:#3a2a0a
-    class CUST cust
-    class THIRD third
+    classDef oryo fill:#fff5e6,stroke:#9c6b1d,color:#3a2a0a
+    classDef ext fill:#eef0ff,stroke:#4a5fa5,color:#1a2a5a
+    class CUST,ING cust
+    class ORYO oryo
+    class EXTDEPS ext
 ```
 
 **Reading the diagram:**
-- Solid arrows = always-on runtime traffic. Dotted = once-per-event (image pull at pod start, login email send, sensor installer fetch).
-- The "installer download" dotted line is the simplification of a two-hop: device fetches the install script from `api.<DOMAIN>`, which signed-redirects to Oryo's sensor-binaries S3. Bytes come from Oryo's bucket.
-- Each pod connects to RDS as its **own least-privilege Postgres role** (`oryo-dashboard` / `oryo-gateway` / `oryo-worker`); pod → S3 uses IRSA, no static AWS credentials. See [customer/docs/glossary.md](docs/glossary.md#per-service-postgres-roles) for the details left out of the diagram.
+- **Solid** arrows = always-on runtime traffic (admin → dashboard, sensor → gateway, pod → DB / S3). **Dotted** = once-per-event (image pull, login emails, installer fetch).
+- The two-hop installer fetch — `sensor → api.<DOMAIN>` retrieves the install script, which signed-redirects to `Oryo S3`; the bytes come from Oryo's bucket directly.
+- Each pod connects to RDS as its **own least-privilege Postgres role** (`oryo-dashboard` / `oryo-gateway` / `oryo-worker`); pod → S3 uses IRSA, no static AWS credentials. See [customer/docs/glossary.md](docs/glossary.md#per-service-postgres-roles) for the per-role details the diagram leaves out.
 
 ## Prerequisites
 
