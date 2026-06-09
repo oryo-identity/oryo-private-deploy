@@ -23,8 +23,8 @@ oryo-private-deploy/
 
 ## What's in `internal/`
 
-- `values.sandbox.yaml` — a complete, working reference `values` file
 - `scripts/grant-ecr-pull.sh` — the access grant Oryo runs to authorize your account to pull images
+- `scripts/provision.sh` — the mutating counterpart to customer/scripts/setup.sh (sandbox / on-customer-behalf use)
 - `docs/oryo-onboarding.md` — how the image-access grant works, with a worked example
 - `docs/prereq-setup.md` — building the prerequisite AWS infrastructure (domain, cert, cluster, RDS) from scratch
 

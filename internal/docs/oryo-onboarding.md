@@ -58,10 +58,12 @@ cd customer
 # 2. Cross-account ECR pull — run from Oryo prod, one-time, idempotent
 ./../internal/scripts/grant-ecr-pull.sh 221759618824 oryo-prod
 
-# 3. Install with the sandbox values file from internal/
+# 3. Install with the sandbox's local values file (not committed — keep it
+#    on the operator's machine; the file shape mirrors customer/values.example.yaml
+#    with the sandbox-specific domain, cert ARN, IRSA role ARN, bucket, RDS host).
 helm install oryo ./chart \
   --namespace oryo-sandbox \
-  --values ../internal/values.sandbox.yaml \
+  --values ./values.sandbox.local.yaml \
   --wait --timeout 15m
 
 # 4. After ALBs provision (~2-3 min), create the 3 CNAMEs

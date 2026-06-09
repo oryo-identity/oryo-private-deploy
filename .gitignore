@@ -1,6 +1,9 @@
 # Customer's actual values file — copied from customer/values.example.yaml
 customer/values.yaml
 
+# Operator-local values for sandbox / on-customer-behalf installs — never commit
+internal/**/*.local.yaml
+
 # Local env config (customer/scripts/setup.sh reads from customer/.env)
 customer/.env
 .env

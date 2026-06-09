@@ -249,6 +249,6 @@ For the Oryo sandbox specifically (account `221759618824`), the prereqs already 
 | RDS | `db-pd-1.cxyccack2h4y.us-east-2.rds.amazonaws.com` |
 | RDS admin password | in 1Password / `customer/.env` `DB_ADMIN_PASSWORD` |
 | Cluster security group | `sg-0a6187cfbf3d3ca47` (already in RDS allowlist) |
-| ACM cert | re-request on each teardown; ARN goes into `internal/values.sandbox.yaml` |
+| ACM cert | re-request on each teardown; ARN goes into the sandbox's local `values.yaml` (not committed) |
 
 For a sandbox rebuild, the only step you usually need from this doc is **step 2 (ACM cert re-request)**. The rest is already provisioned.
