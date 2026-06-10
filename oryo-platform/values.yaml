@@ -95,9 +95,8 @@ dbInit:
   # Postgres password and the service's connect password stay in sync.
   #
   # Only roles a runtime service logs in as need a password here. AUTH is
-  # omitted (reached via SET ROLE, not direct login); SUPPORT is wired only
-  # when backoffice runs in-cluster. Roles with no env var are created without
-  # a LOGIN password. See values.example.yaml for the wiring.
+  # omitted (reached via SET ROLE, not direct login). Roles with no env var
+  # are created without a LOGIN password. See values.example.yaml for the wiring.
   passwordSecrets: {}
 
   # Optional default tenant bootstrap.
@@ -489,13 +488,3 @@ api:
   tolerations: []
   affinity: {}
   topologySpreadConstraints: []
-
-# -----------------------------------------------------------------------------
-# Backoffice is intentionally omitted from this chart.
-#
-# It is Oryo's internal support tool (authentication gated by @oryo.io
-# Google accounts) and has no use in a private customer deployment. The
-# templates/backoffice/ directory was stripped from the chart shipped here.
-#
-# If you need it for some reason, contact licensing@oryo.io.
-# -----------------------------------------------------------------------------
