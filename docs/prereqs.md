@@ -1,6 +1,6 @@
 # Prerequisites — what needs to exist in your AWS account
 
-Oryo's install kit **creates nothing in your AWS account**. The resources below need to exist before `helm install` — `setup.sh` then verifies them and prints any gaps.
+Oryo's install kit **creates nothing in your AWS account**. The resources below need to exist before `helm install` — `verify.sh` then verifies them and prints any gaps.
 
 > **NOTE:** This doc is a **helpful guide to get a green-field account to a base state**, with copy-pasteable CLI snippets that make sane choices for a first install. Most teams already run their own VPC / IRSA / RDS conventions and will satisfy these requirements through their existing IaC. If that's you, treat this as context — read the checklist at each section, confirm your setup meets the constraint, and skim past the snippets.
 
@@ -223,7 +223,7 @@ aws bedrock list-foundation-models --region <REGION> \
 
 Both rows should be `ACTIVE`. If a row is missing, the model isn't available in `<REGION>` — pick a Bedrock-supported region or set `global.env.AWS_REGION` in `values.yaml` to point the agents at a region that has them (IRSA still uses the cluster's STS endpoint; only the Bedrock SDK target moves).
 
-> **NOTE:** `list-foundation-models` shows availability, not your account's opt-in state. The truth check is a real `bedrock-runtime invoke-model` call — if model access is missing you'll get `AccessDeniedException: You don't have access to the model with the specified model ID`. `setup.sh` runs a smoke call against Haiku 3 and reports the result.
+> **NOTE:** `list-foundation-models` shows availability, not your account's opt-in state. The truth check is a real `bedrock-runtime invoke-model` call — if model access is missing you'll get `AccessDeniedException: You don't have access to the model with the specified model ID`. `verify.sh` runs a smoke call against Haiku 3 and reports the result.
 
 ---
 
@@ -259,4 +259,4 @@ Then add the DNS-validation CNAME ACM tells you about to your Route 53 zone — 
 
 ---
 
-When all of the above exist, run `./scripts/setup.sh` — it verifies each one and tells you exactly what's missing if anything isn't ready.
+When all of the above exist, run `./scripts/verify.sh` — it verifies each one and tells you exactly what's missing if anything isn't ready.

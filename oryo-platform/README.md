@@ -21,7 +21,7 @@ helm install oryo ./oryo-platform \
 
 The chart **creates nothing in AWS**. It assumes the S3 bucket, IRSA role,
 Bedrock model access, subnet tags, arm64 NodePool, RDS database, and ACM cert
-already exist — `../scripts/setup.sh` verifies them and the
+already exist — `../scripts/verify.sh` verifies them and the
 [prerequisites doc](../docs/prereqs.md) explains how to provision them.
 
 ## Parameters
@@ -36,7 +36,7 @@ value flagged with a `TODO`. The values you must provide:
 | `global.env.APP_BASE_URL` / `API_BASE_URL` | `https://app.<DOMAIN>` / `https://api.<DOMAIN>` | derived from DOMAIN |
 | `global.env.DEFAULT_BUCKET` | S3 object-storage bucket | [prereqs §1](../docs/prereqs.md) |
 | `global.db.host` / `database` | RDS endpoint + database name | [prereqs §6](../docs/prereqs.md) |
-| `serviceAccount.annotations."eks.amazonaws.com/role-arn"` | IRSA workload role ARN | [prereqs §2](../docs/prereqs.md) / `setup.sh` output |
+| `serviceAccount.annotations."eks.amazonaws.com/role-arn"` | IRSA workload role ARN | [prereqs §2](../docs/prereqs.md) / `verify.sh` output |
 | `dashboard.ingress.host`, `gateway.ingress.host`, `api.ingress.host` | per-service subdomains | derived from DOMAIN |
 | ACM cert ARN (ingress annotation) | wildcard `*.<DOMAIN>` cert | [prereqs §7](../docs/prereqs.md) |
 
@@ -45,7 +45,7 @@ Values with safe defaults you usually leave alone: `global.env.ENV_NAME`
 `autoscaling`, `affinity`, `tolerations`, `imageTag`.
 
 Secrets (`oryo-session-secret`, `oryo-db-*`, `oryo-resend-api-key`) are
-referenced by the chart but created out-of-band — by `setup.sh
+referenced by the chart but created out-of-band — by `verify.sh
 --bootstrap-secrets` or your own secrets manager. See the
 [runbook](../docs/runbook.md) secrets section.
 

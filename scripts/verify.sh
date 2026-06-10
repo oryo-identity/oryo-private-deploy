@@ -13,8 +13,8 @@
 #
 # Usage:
 #   cp .env.example .env && $EDITOR .env
-#   ./scripts/setup.sh                      # verify only
-#   ./scripts/setup.sh --bootstrap-secrets  # verify + create the k8s secrets
+#   ./scripts/verify.sh                      # verify only
+#   ./scripts/verify.sh --bootstrap-secrets  # verify + create the k8s secrets
 
 set -euo pipefail
 

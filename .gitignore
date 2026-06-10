@@ -1,7 +1,7 @@
 # Customer's actual values file — copied from values.example.yaml
 values.yaml
 
-# Local env config (scripts/setup.sh reads from .env)
+# Local env config (scripts/verify.sh reads from .env)
 .env
 .env.local
 

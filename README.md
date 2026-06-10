@@ -14,12 +14,12 @@ A Helm chart ([`oryo-platform/`](oryo-platform/)) that runs the Oryo platform (d
 oryo-private-deploy/
 ├── oryo-platform/        ← the Helm chart (Chart.yaml, values.yaml, templates/)
 ├── values.example.yaml   ← starting-point values; copy to values.yaml and fill in
-├── scripts/setup.sh      ← preflight verifier (creates nothing in AWS)
+├── scripts/verify.sh      ← preflight verifier (creates nothing in AWS)
 ├── docs/
 │   ├── prereqs.md        ← AWS-side prerequisites you provision before install
 │   ├── runbook.md        ← end-to-end install steps + gotchas
 │   └── glossary.md       ← terms + concepts
-├── .env.example          ← setup.sh inputs
+├── .env.example          ← verify.sh inputs
 └── LICENSE.md
 ```
 
@@ -75,7 +75,7 @@ flowchart LR
 
 ## Prerequisites
 
-This install kit **creates nothing in your AWS account.** You provision the AWS-side prerequisites yourself (per [docs/prereqs.md](docs/prereqs.md)); `setup.sh` then verifies they exist before install and prints the values you need to drop into `values.yaml`.
+This install kit **creates nothing in your AWS account.** You provision the AWS-side prerequisites yourself (per [docs/prereqs.md](docs/prereqs.md)); `verify.sh` then verifies they exist before install and prints the values you need to drop into `values.yaml`.
 
 You provide:
 
@@ -105,7 +105,7 @@ Tools on your machine:
 #    5 required k8s secrets.
 cp .env.example .env
 $EDITOR .env
-./scripts/setup.sh --bootstrap-secrets
+./scripts/verify.sh --bootstrap-secrets
 
 # 3. Fill in the values template
 cp values.example.yaml values.yaml
@@ -127,7 +127,7 @@ curl -I https://app.<your-domain>/healthcheck
 
 See [docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
 
-## What `setup.sh` does
+## What `verify.sh` does
 
 It's a **preflight verifier** — by default it creates nothing in your AWS account, only checks. Run it before `helm install` against the `.env` you filled in.
 
