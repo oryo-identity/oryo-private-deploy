@@ -2,9 +2,6 @@
 #
 # Copy to values.yaml, fill in the placeholders below, then:
 #   helm install oryo ./oryo-platform --namespace oryo --values values.yaml
-#
-# Anything not overridden falls back to defaults in oryo-platform/values.yaml.
-# See docs/runbook.md for the long form.
 
 global:
   # ---------------------------------------------------------------------------
@@ -17,25 +14,22 @@ global:
   imagePullSecrets: []
 
   env:
-    ENV_NAME: stage  # `stage` is the private-deploy value — always use it. `prod` is reserved for Oryo's own SaaS; `dev`/`local` enable developer-only behavior. See docs/runbook.md §3.
+    ENV_NAME: stage  # `stage` is the private-deploy value — always use it
     DOMAIN: example.com                                # TODO: your domain
     APP_BASE_URL: https://app.example.com              # TODO: https://app.<DOMAIN>
     API_BASE_URL: https://api.example.com              # TODO: https://api.<DOMAIN> — sensors phone home here
     DEFAULT_BUCKET: oryo-objects-<account>-<region>    # TODO: from verify.sh output
 
-    # (RESEND_API_KEY is required and lives on dashboard.externalSecrets below.)
-
   db:
     host: <rds-endpoint>.rds.amazonaws.com             # TODO: your RDS endpoint
     port: 5432
-    database: postgres                                 # the database must already exist; `postgres` is RDS's default
+    database: postgres
     sslmode: require
 
   externalSecrets:
     SESSION_SECRET:
       secretName: oryo-session-secret
       key: value
-    # Add ORYO_ENTRA_APP_SECRET / RESEND_API_KEY / etc. here if you use them.
 
 serviceAccount:
   # Keep this name — your IAM role's trust policy binds to
@@ -74,7 +68,7 @@ dashboard:
   ingress:
     enabled: true
     className: alb
-    host: app.example.com                              # TODO
+    host: app.example.com                                         # TODO
     annotations: &albAnnotations
       alb.ingress.kubernetes.io/scheme: internet-facing
       alb.ingress.kubernetes.io/target-type: ip
@@ -85,8 +79,7 @@ dashboard:
       alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }
-  # Email login codes via Resend — required. RESEND_API_KEY must be set in
-  # .env so verify.sh creates the `oryo-resend-api-key` secret (use your own
+  # RESEND_API_KEY must be set in .env so use your own
   # Resend key or ask the Oryo team for one).
   externalSecrets:
     RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
@@ -117,9 +110,7 @@ api:
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }
   env:
-    # Oryo's public sensor-binaries bucket. The dashboard's Installation tab
-    # links to install.sh / install.ps1 / install-linux.sh hosted here.
-    # TODO: from verify.sh output (defaults to the prod bucket; override only
-    # if Oryo gave you a different one, e.g. air-gap / mirror).
+    # Bucket for where sensor-binaries live. Oryo provides a public s3-bucket
+    # override if you want to manage your own release of sensor binaries
     SENSOR_EXECUTABLES_BUCKET: binaries-pub-prod-us-east-1-oryo
 

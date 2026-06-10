@@ -27,10 +27,8 @@ global:
   # ServiceAccount annotations (see serviceAccount.annotations below).
   podLabels: {}
 
-  # Common environment variables (mirror locals.environment_variables in
-  # deploy/terraform/locals.tf). Empty values are dropped at render time.
   env:
-    ENV_NAME: stage # private-deploy chart default — `stage` is the private-deploy value (always). `prod` is reserved for Oryo's own SaaS.
+    ENV_NAME: stage # private-deploy chart default — `stage` is the private-deploy value (always)
     DOMAIN: '' # e.g. devoryo.com
     APP_BASE_URL: '' # e.g. https://app.devoryo.com
     API_BASE_URL: '' # e.g. https://api.devoryo.com — falls back to https://api.oryo.io in dashboard schema
@@ -47,26 +45,14 @@ global:
     database: '' # e.g. platformprod
     sslmode: require
 
-  # External secret references. Each entry maps an env-var name to a
-  # Kubernetes Secret + key. Use these instead of `secrets.values` when the
-  # secret is managed outside the chart (External Secrets Operator, SealedSecrets,
-  # CSI driver, etc.).
-  #
-  # Example:
-  #   externalSecrets:
-  #     SESSION_SECRET:
-  #       secretName: oryo-session-secret
-  #       key: value
+  # env-var -> { secretName, key } for secrets managed outside the chart
+  # (ESO, SealedSecrets, CSI driver). Prefer over `secrets` below in production.
+  # See values.example.yaml for a worked example.
   externalSecrets: {}
 
-  # Inline secret values. ONLY use for local/dev — for production prefer
-  # externalSecrets. When set, a Kubernetes Secret named `<release>-secrets`
-  # is generated.
+  # Inline secret values — local/dev ONLY (prefer externalSecrets in prod).
+  # When set, a Kubernetes Secret named `<release>-secrets` is generated.
   secrets: {}
-  # Example:
-  # secrets:
-  #   SESSION_SECRET: "change-me"
-  #   ORYO_ENTRA_APP_SECRET: "change-me"
 
 # -----------------------------------------------------------------------------
 # Database initialization — runs the @service/db-init image to create roles,
@@ -104,24 +90,15 @@ dbInit:
     userKey: username
     passwordKey: password
 
-  # Per-role password sources. Each entry binds an env var that db-init reads
-  # to a Kubernetes Secret + key. The SAME Secret should be referenced by the
-  # corresponding <service>.db.passwordSecret so the password set in Postgres
-  # matches what the service connects with.
+  # Per-role password sources: env var (db-init reads) -> Secret + key. Point
+  # each at the SAME Secret as the matching <service>.db.passwordSecret so the
+  # Postgres password and the service's connect password stay in sync.
   #
-  # Only roles that runtime services log in as need a password wired here.
-  # AUTH is intentionally omitted — it's reached via SET ROLE (membership
-  # grant), not direct login. SUPPORT is wired only when backoffice runs in
-  # the cluster (it connects as SUPPORT for full cross-tenant access).
-  # db-init creates any role without a LOGIN PASSWORD when its env var is
-  # absent.
+  # Only roles a runtime service logs in as need a password here. AUTH is
+  # omitted (reached via SET ROLE, not direct login); SUPPORT is wired only
+  # when backoffice runs in-cluster. Roles with no env var are created without
+  # a LOGIN password. See values.example.yaml for the wiring.
   passwordSecrets: {}
-  # Example:
-  # passwordSecrets:
-  #   DASHBOARD_USER_PASSWORD: { secretName: oryo-db-dashboard, key: password }
-  #   GATEWAY_USER_PASSWORD:   { secretName: oryo-db-gateway,   key: password }
-  #   WORKER_USER_PASSWORD:    { secretName: oryo-db-worker,    key: password }
-  #   SUPPORT_USER_PASSWORD:   { secretName: oryo-db-support,   key: password }
 
   # Optional default tenant bootstrap.
   defaultTenant:
@@ -151,9 +128,8 @@ dbInit:
 serviceAccount:
   create: true
   name: '' # defaults to <release>-oryo
+  # IRSA on EKS: annotate with eks.amazonaws.com/role-arn (see values.example.yaml)
   annotations: {}
-  # Example (IRSA on EKS):
-  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/oryo-platform
 
 # -----------------------------------------------------------------------------
 # Pod-level defaults (override per-service under <service>.podSecurityContext etc.)
@@ -194,13 +170,8 @@ dashboard:
     className: '' # e.g. nginx, alb
     # Host pattern matches the ALB rule "^app\..*" in terraform.
     host: app.example.com
+    # controller-specific (nginx/alb) annotations — see values.example.yaml
     annotations: {}
-    # nginx example:
-    #   nginx.ingress.kubernetes.io/proxy-body-size: 10m
-    # alb example:
-    #   alb.ingress.kubernetes.io/scheme: internet-facing
-    #   alb.ingress.kubernetes.io/target-type: ip
-    #   alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
     tls:
       enabled: true
       secretName: '' # Kubernetes TLS secret (omit for ALB ACM)
@@ -236,15 +207,10 @@ dashboard:
 
   env: {}
 
-  # Per-service env vars sourced from existing K8s Secrets (secretKeyRef).
-  # Map of ENV_VAR_NAME -> { secretName, key }. Use this for credentials
-  # that only this service needs (e.g. RESEND_API_KEY on dashboard).
-  # For credentials shared by every workload, use global.externalSecrets.
+  # Per-service env from existing K8s Secrets: ENV_VAR -> { secretName, key }.
+  # Use for creds only this service needs (e.g. RESEND_API_KEY); for creds
+  # shared by every workload use global.externalSecrets. See values.example.yaml.
   externalSecrets: {}
-  # externalSecrets:
-  #   RESEND_API_KEY:
-  #     secretName: oryo-resend-api-key
-  #     key: value
 
   # Probes hit /healthcheck on the container port (matches ALB health check).
   livenessProbe:
