@@ -21,7 +21,7 @@ global:
     DOMAIN: example.com                                # TODO: your domain
     APP_BASE_URL: https://app.example.com              # TODO: https://app.<DOMAIN>
     API_BASE_URL: https://api.example.com              # TODO: https://api.<DOMAIN> — sensors phone home here
-    DEFAULT_BUCKET: oryo-objects-<account>-<region>    # TODO: from setup.sh output
+    DEFAULT_BUCKET: oryo-objects-<account>-<region>    # TODO: from verify.sh output
 
     # (RESEND_API_KEY is required and lives on dashboard.externalSecrets below.)
 
@@ -42,7 +42,7 @@ serviceAccount:
   # system:serviceaccount:<namespace>:oryo-platform (see docs/prereqs.md §2).
   name: oryo-platform
   annotations:
-    # TODO: paste the role ARN printed by setup.sh
+    # TODO: paste the role ARN printed by verify.sh
     eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/OryoWorkloadRole
 
 # ---------------------------------------------------------------------------
@@ -86,7 +86,7 @@ dashboard:
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }
   # Email login codes via Resend — required. RESEND_API_KEY must be set in
-  # .env so setup.sh creates the `oryo-resend-api-key` secret (use your own
+  # .env so verify.sh creates the `oryo-resend-api-key` secret (use your own
   # Resend key or ask the Oryo team for one).
   externalSecrets:
     RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
@@ -119,7 +119,7 @@ api:
   env:
     # Oryo's public sensor-binaries bucket. The dashboard's Installation tab
     # links to install.sh / install.ps1 / install-linux.sh hosted here.
-    # TODO: from setup.sh output (defaults to the prod bucket; override only
+    # TODO: from verify.sh output (defaults to the prod bucket; override only
     # if Oryo gave you a different one, e.g. air-gap / mirror).
     SENSOR_EXECUTABLES_BUCKET: binaries-pub-prod-us-east-1-oryo
 

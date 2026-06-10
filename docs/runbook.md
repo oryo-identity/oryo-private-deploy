@@ -6,19 +6,19 @@ End-to-end bootstrap for installing Oryo in your own AWS account. Targets EKS Au
 
 ## Prerequisites — what you bring
 
-These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `setup.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[docs/prereqs.md](prereqs.md)**.
+These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `verify.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[docs/prereqs.md](prereqs.md)**.
 
 | Requirement | Notes |
 |---|---|
 | **AWS account** | With SSO + admin access for the account you'll deploy into. |
 | **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [docs/prereqs.md §4](prereqs.md). |
-| **S3 bucket, IAM role, subnet tags** | You create these — [docs/prereqs.md §1–3](prereqs.md). `setup.sh` verifies them. |
+| **S3 bucket, IAM role, subnet tags** | You create these — [docs/prereqs.md §1–3](prereqs.md). `verify.sh` verifies them. |
 | **Bedrock model access** | Per-region opt-in for Claude 3 Haiku + Nova Micro — [docs/prereqs.md §5](prereqs.md). Optional in the sense the install still succeeds without it, but auto-classification, active discovery, and the DLP policy go dark — see [Bedrock-dependent features](#bedrock-dependent-features). |
 | **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [docs/prereqs.md §6](prereqs.md). |
 | **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [docs/prereqs.md §7](prereqs.md). |
 | **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images. |
 
-`setup.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
+`verify.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
 
 ---
 
@@ -30,8 +30,8 @@ These tools need to be installed locally to successfully go through the full flo
 - `kubectl` — talk to your EKS cluster
 - `helm` (v3) — install + upgrade the chart
 - `eksctl` — only needed for the eksctl-path IRSA setup in [docs/prereqs.md §2b](prereqs.md) (skip if you create the role manually)
-- `jq` — used by `setup.sh` to inspect Auto Mode NodePools during preflight
-- `openssl` — used by `setup.sh --bootstrap-secrets` to generate session + role passwords (system default works on macOS/Linux)
+- `jq` — used by `verify.sh` to inspect Auto Mode NodePools during preflight
+- `openssl` — used by `verify.sh --bootstrap-secrets` to generate session + role passwords (system default works on macOS/Linux)
 - `docker` (optional) — only for local image verification
 
 ## 1. Connect
@@ -60,14 +60,14 @@ kubectl get nodepool 2>/dev/null
 
 The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
 
-Then run `setup.sh`, which **verifies** everything exists and prints the values you need:
+Then run `verify.sh`, which **verifies** everything exists and prints the values you need:
 
 ```bash
 cd customer
 cp .env.example .env
 $EDITOR .env          # AWS_PROFILE, AWS_REGION, ACCOUNT_ID, CLUSTER_NAME, NAMESPACE, BUCKET_NAME
 
-./scripts/setup.sh    # preflight — checks bucket, IAM role, subnet tags, arm64, secrets
+./scripts/verify.sh    # preflight — checks bucket, IAM role, subnet tags, arm64, secrets
 ```
 
 It prints a ✓/✗ for each check; if anything's missing it points you at the right section of `prereqs.md`. Once all green, it prints the role ARN + bucket name for `values.yaml`.
@@ -76,10 +76,10 @@ It prints a ✓/✗ for each check; if anything's missing it points you at the r
 
 The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db-admin`, `oryo-db-dashboard`, `oryo-db-gateway`, `oryo-db-worker`, `oryo-resend-api-key`. Two ways:
 
-- **Bring your own** (ESO / Vault / SealedSecrets / manual `kubectl`) — `setup.sh` verifies they exist.
+- **Bring your own** (ESO / Vault / SealedSecrets / manual `kubectl`) — `verify.sh` verifies they exist.
 - **Let the script generate them** — fill `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD`, and `RESEND_API_KEY` in `.env`, then:
   ```bash
-  ./scripts/setup.sh --bootstrap-secrets
+  ./scripts/verify.sh --bootstrap-secrets
   ```
   This generates the random ones (session + per-service DB passwords) and creates `oryo-db-admin` from your `.env`. Re-running is idempotent.
 
@@ -98,7 +98,7 @@ Replace placeholders (search for `TODO`):
 - **`global.env.DOMAIN`** + **`APP_BASE_URL`** + **`API_BASE_URL`** — your domain.
 - **`global.env.DEFAULT_BUCKET`** — bucket name from `.env`.
 - **`global.db.host` / `database`** — your RDS endpoint and database name.
-- **`serviceAccount.annotations.eks.amazonaws.com/role-arn`** — IRSA role ARN from `setup.sh`.
+- **`serviceAccount.annotations.eks.amazonaws.com/role-arn`** — IRSA role ARN from `verify.sh`.
 - **`alb.ingress.kubernetes.io/certificate-arn`** — ACM cert ARN (from prereqs; 3 ingresses use it).
 - **Ingress hostnames** — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
 - **`dbInit.defaultTenant`** — your org name + owner email.
@@ -113,7 +113,7 @@ helm install oryo ./oryo-platform \
   --wait --timeout 10m
 ```
 
-> If you bootstrapped secrets with `setup.sh --bootstrap-secrets`, the namespace already exists — `--create-namespace` is a harmless no-op.
+> If you bootstrapped secrets with `verify.sh --bootstrap-secrets`, the namespace already exists — `--create-namespace` is a harmless no-op.
 
 **Timeout matters.** First install on a cold cluster pulls images, provisions new arm64 nodes, runs the dbInit hook, then waits for all pods to become Ready — a single end-to-end pass that can take a few minutes. 10 minutes is usually plenty of headroom; bump it higher if your cluster is provisioning capacity from scratch.
 
