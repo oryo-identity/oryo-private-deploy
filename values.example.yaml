@@ -79,8 +79,8 @@ dashboard:
       alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
   db:
     passwordSecret: { name: oryo-db-dashboard, key: password }
-  # RESEND_API_KEY must be set in .env so use your own
-  # Resend key or ask the Oryo team for one).
+  # Dashboard emails login codes via Resend. Bring your own RESEND_API_KEY
+  # (or ask the Oryo team), stored in the oryo-resend-api-key Secret below.
   externalSecrets:
     RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
 
