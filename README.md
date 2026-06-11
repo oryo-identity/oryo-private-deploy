@@ -13,7 +13,6 @@ A Helm chart ([`oryo-platform/`](oryo-platform/)) that runs the Oryo platform (d
 ```
 oryo-private-deploy/
 ├── oryo-platform/        ← the Helm chart (Chart.yaml, values.yaml, templates/)
-├── values.example.yaml   ← starting-point values; copy to values.yaml and fill in
 ├── scripts/verify.sh      ← preflight verifier (creates nothing in AWS)
 ├── docs/
 │   ├── prereqs.md        ← AWS-side prerequisites you provision before install
@@ -94,14 +93,14 @@ cp .env.example .env
 $EDITOR .env
 ./scripts/verify.sh
 
-# 3. Fill in the values template
-cp values.example.yaml values.yaml
-$EDITOR values.yaml         # domain, cert ARN, role ARN, RDS host, etc.
+# 3. Override what you need to (domain, cert ARN, role ARN, RDS host, etc.)
+$EDITOR oryo-platform/values.custom.yaml   # gitignored; create with just your overrides
 
 # 4. Install
 helm install oryo ./oryo-platform \
   --namespace oryo --create-namespace \
-  --values values.yaml \
+  --values oryo-platform/values.yaml \
+  --values oryo-platform/values.custom.yaml \
   --wait --timeout 10m
 
 # 5. Point DNS at the ALBs

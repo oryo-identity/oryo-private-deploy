@@ -76,7 +76,7 @@ Both sit behind ALBs (`gateway.<DOMAIN>` and `api.<DOMAIN>` respectively).
 
 ### `oryo-platform` ServiceAccount
 
-The k8s ServiceAccount the long-running pods run as. Annotated with the IRSA role ARN, which the pods assume to reach S3. The name `oryo-platform` is hard-pinned in `values.example.yaml` so the IRSA trust policy (which binds `system:serviceaccount:<NAMESPACE>:oryo-platform` to the role) keeps working.
+The k8s ServiceAccount the long-running pods run as. Annotated with the IRSA role ARN, which the pods assume to reach S3. The name `oryo-platform` is hard-pinned in the chart's `values.yaml` so the IRSA trust policy (which binds `system:serviceaccount:<NAMESPACE>:oryo-platform` to the role) keeps working.
 
 Change it and IRSA breaks silently — pods start fine but S3 calls return AccessDenied.
 
