@@ -43,6 +43,15 @@ global:
       key: value
 
 # -----------------------------------------------------------------------------
+# Sensor — desktop sensor compatibility.
+# -----------------------------------------------------------------------------
+sensor:
+  # Compatible sensor version range for this release. The platform serves the
+  # highest sensor matching this range from the install bucket. Stamped per
+  # release by the promotion; leave empty for from-source/dev installs.
+  versionRange: ''
+
+# -----------------------------------------------------------------------------
 # ServiceAccount — used by all workloads. Annotate with an IAM role ARN for
 # IRSA on EKS so pods get S3 + Bedrock access without static credentials.
 # -----------------------------------------------------------------------------
