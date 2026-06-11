@@ -1,13 +1,12 @@
 # Default values for the oryo-platform chart.
-# Override with -f my-values.yaml or --set on the command line.
+# Override with -f values.custom.yaml or --set on the command line.
 
-# -----------------------------------------------------------------------------
-# Global settings — shared across all services
-# -----------------------------------------------------------------------------
 global:
-  # Image registry (defaults to AWS ECR for the configured account/region).
-  # Override `imageRegistry` to publish to GHCR, a private registry, etc.
-  imageRegistry: '' # e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com
+  # ---------------------------------------------------------------------------
+  # IMAGES — pulled from Oryo's distribution ECR.
+  # Your AWS account must be on the allowlist; contact eng@oryo.io.
+  # ---------------------------------------------------------------------------
+  imageRegistry: 831622638566.dkr.ecr.us-east-1.amazonaws.com  # Oryo prod ECR
   imageTag: latest # default tag applied unless service.image.tag overrides
   imagePullPolicy: IfNotPresent
   imagePullSecrets: [] # e.g. [{ name: ecr-pull-secret }]
@@ -19,106 +18,29 @@ global:
   createIngressClass: true
   ingressClassName: alb
 
-  # Extra pod labels merged onto every workload's pod template. Required for
-  # cloud workload-identity bindings that select pods by label, e.g. AKS:
-  #   podLabels:
-  #     azure.workload.identity/use: "true"
-  # EKS (IRSA) and GKE (Workload Identity) do NOT need this — they bind via
-  # ServiceAccount annotations (see serviceAccount.annotations below).
   podLabels: {}
 
   env:
     ENV_NAME: stage # private-deploy chart default — `stage` is the private-deploy value (always)
-    DOMAIN: '' # e.g. devoryo.com
-    APP_BASE_URL: '' # e.g. https://app.devoryo.com
-    API_BASE_URL: '' # e.g. https://api.devoryo.com — falls back to https://api.oryo.io in dashboard schema
-    DEFAULT_BUCKET: '' # S3 bucket for object storage
-    SLACK_ERROR_WEBHOOK: ''
-    LOGIN_CODE_FROM_EMAIL: noreply@oryo.io
-    ORYO_ENTRA_APP_ID: ''
+    DOMAIN: 'example.com'                        # TODO
+    APP_BASE_URL: 'https://app.example.com'      # TODO
+    API_BASE_URL: 'https://api.exmaple.com'      # TODO
+    DEFAULT_BUCKET: 'example-bucket'             # TODO - s3 bucket
+    LOGIN_CODE_FROM_EMAIL: noreply@oryo.io      # keep value if using an oryo provided Resend API Key
 
   # Database connection (shared across services). Per-service `db.user`/`db.role`
-  # overrides exist below to mirror the per-service Postgres roles in ECS.
   db:
-    host: '' # e.g. postgres-main.xxxxx.us-east-1.rds.amazonaws.com
+    host: ''                                     # TODO
     port: 5432
-    database: '' # e.g. platformprod
+    database: postgres
     sslmode: require
 
   # env-var -> { secretName, key } for secrets managed outside the chart
-  # (ESO, SealedSecrets, CSI driver). Prefer over `secrets` below in production.
-  # See values.example.yaml for a worked example.
-  externalSecrets: {}
-
-  # Inline secret values — local/dev ONLY (prefer externalSecrets in prod).
-  # When set, a Kubernetes Secret named `<release>-secrets` is generated.
-  secrets: {}
-
-# -----------------------------------------------------------------------------
-# Database initialization — runs the @service/db-init image to create roles,
-# tables, RLS policies, and the default tenant. Idempotent.
-#
-# Secret model:
-#   - dbInit.adminSecret holds Postgres SUPERUSER credentials. Only this Job
-#     mounts it; runtime services never see it.
-#   - dbInit.passwordSecrets references the SAME Kubernetes Secrets that each
-#     service binds via <service>.db.passwordSecret. Single source of truth:
-#     db-init writes them into Postgres roles, services read them to connect.
-# -----------------------------------------------------------------------------
-dbInit:
-  enabled: true
-
-  # Execution mode (defaults to "disabled" so the chart renders without
-  # admin credentials configured — set to "hook" for production):
-  #   hook     — runs as a Helm pre-install Job (one-time bootstrap only).
-  #              Helm blocks the install until it succeeds. Does NOT run on
-  #              `helm upgrade`. RECOMMENDED for production.
-  #   manual   — renders a normal Job resource. kubectl/argo apply runs it
-  #              independently. Use when CI owns the bootstrap lifecycle.
-  #   disabled — does not render the Job. Use when the DB is bootstrapped
-  #              out-of-band (DBA, separate pipeline, etc.).
-  mode: disabled
-
-  image:
-    repository: db-init
-    tag: '' # falls back to global.imageTag
-
-  # Postgres admin (superuser) credentials. Required for CREATE/ALTER ROLE.
-  # Reference an externally-managed Secret — do NOT inline.
-  adminSecret:
-    name: '' # e.g. oryo-db-admin
-    userKey: username
-    passwordKey: password
-
-  # Per-role password sources: env var (db-init reads) -> Secret + key. Point
-  # each at the SAME Secret as the matching <service>.db.passwordSecret so the
-  # Postgres password and the service's connect password stay in sync.
-  #
-  # Only roles a runtime service logs in as need a password here. AUTH is
-  # omitted (reached via SET ROLE, not direct login). Roles with no env var
-  # are created without a LOGIN password. See values.example.yaml for the wiring.
-  passwordSecrets: {}
-
-  # Optional default tenant bootstrap.
-  defaultTenant:
-    name: '' # e.g. "Acme Corp"
-    owner: '' # e.g. admin@acme.com
-
-  # Job tunables.
-  backoffLimit: 3
-  activeDeadlineSeconds: 600
-  ttlSecondsAfterFinished: 600 # auto-clean finished hook pods after 10m
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
+  # (ESO, SealedSecrets, CSI driver).
+  externalSecrets:
+    SESSION_SECRET:
+      secretName: oryo-session-secret
+      key: value
 
 # -----------------------------------------------------------------------------
 # ServiceAccount — used by all workloads. Annotate with an IAM role ARN for
@@ -126,365 +48,139 @@ dbInit:
 # -----------------------------------------------------------------------------
 serviceAccount:
   create: true
-  name: '' # defaults to <release>-oryo
-  # IRSA on EKS: annotate with eks.amazonaws.com/role-arn (see values.example.yaml)
-  annotations: {}
+  name: oryo-platform           # MUST match the SA in your IAM role's IRSA trust policy
+  annotations:
+    eks.amazonaws.com/role-arn: ''
 
 # -----------------------------------------------------------------------------
-# Pod-level defaults (override per-service under <service>.podSecurityContext etc.)
+# Database initialization — runs the @service/db-init image to create roles,
+# tables, RLS policies, and the default tenant. Idempotent.
 # -----------------------------------------------------------------------------
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-  seccompProfile:
-    type: RuntimeDefault
+dbInit:
+  enabled: true
+  mode: hook                       # hook | manual | disabled
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 600
+  resources: {}
 
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: false # dashboard/workers write tmp + caches
-  capabilities:
-    drop: ['ALL']
+  image:
+    repository: db-init
+
+  # Postgres admin (superuser) credentials. Required for CREATE/ALTER ROLE.
+  adminSecret:
+    name: oryo-db-admin
+    userKey: username
+    passwordKey: password
+
+  passwordSecrets:
+    DASHBOARD_USER_PASSWORD: { secretName: oryo-db-dashboard, key: password }
+    GATEWAY_USER_PASSWORD:   { secretName: oryo-db-gateway,   key: password }
+    WORKER_USER_PASSWORD:    { secretName: oryo-db-worker,    key: password }
+
+  # Your Tenant Details.
+  defaultTenant:
+    name: '' # e.g. "Acme Corp"
+    owner: '' # e.g. admin@acme.com
 
 # -----------------------------------------------------------------------------
 # Dashboard — Oryo Platform UI.
 # -----------------------------------------------------------------------------
 dashboard:
   enabled: true
-  replicas: 1
-
   image:
     repository: dashboard
-    tag: '' # falls back to global.imageTag
-
+  replicas: 2
+  containerPort: 8080
   service:
     type: ClusterIP
-    port: 80
-    targetPort: 3000
-
-  containerPort: 3000
-
-  ingress:
-    enabled: false
-    className: '' # e.g. nginx, alb
-    # Host pattern matches the ALB rule "^app\..*" in terraform.
-    host: app.example.com
-    # controller-specific (nginx/alb) annotations — see values.example.yaml
-    annotations: {}
-    tls:
-      enabled: true
-      secretName: '' # Kubernetes TLS secret (omit for ALB ACM)
-
-  # Resource requests/limits mirror ECS cpu=1024 (1 vCPU), memory=2048Mi.
-  resources:
-    requests:
-      cpu: 500m
-      memory: 1Gi
-    limits:
-      cpu: '1'
-      memory: 2Gi
-
+    port: 8080
+  resources: {}
   autoscaling:
     enabled: false
-    minReplicas: 1
-    maxReplicas: 4
-    targetCPUUtilizationPercentage: 70
-    targetMemoryUtilizationPercentage: 80
-
   pdb:
-    enabled: false # enable when replicas > 1
-    minAvailable: 1
-
-  # Per-service DB role + secret env (mirrors db_roles.dashboard).
+    enabled: false
+  ingress:
+    enabled: true
+    className: alb
+    host: ''                                           # TODO
+    annotations: &albAnnotations
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/certificate-arn: ''    # TODO
+      alb.ingress.kubernetes.io/group.name: oryo
+      alb.ingress.kubernetes.io/healthcheck-path: /healthcheck
   db:
     user: oryo-dashboard
-    role: oryo-dashboard
-    # Name + key of the secret holding the dashboard DB password.
-    passwordSecret:
-      name: '' # e.g. oryo-db-dashboard
-      key: password
-
-  env: {}
-
-  # Per-service env from existing K8s Secrets: ENV_VAR -> { secretName, key }.
-  # Use for creds only this service needs (e.g. RESEND_API_KEY); for creds
-  # shared by every workload use global.externalSecrets. See values.example.yaml.
-  externalSecrets: {}
-
-  # Probes hit /healthcheck on the container port (matches ALB health check).
-  livenessProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 30
-    periodSeconds: 30
-    timeoutSeconds: 5
-    failureThreshold: 3
-  readinessProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 5
-    periodSeconds: 10
-    timeoutSeconds: 3
-    failureThreshold: 3
-  startupProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 10
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 30 # 30 * 5s = 150s startup grace
-
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  topologySpreadConstraints: []
+    passwordSecret: { name: oryo-db-dashboard, key: password }
+  # Email login codes via Resend. Requires RESEND_API_KEY
+  externalSecrets:
+    RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
 
 # -----------------------------------------------------------------------------
 # Gateway — AI traffic inspector
 # -----------------------------------------------------------------------------
 gateway:
   enabled: true
-  replicas: 2
-
   image:
     repository: gateway
-    tag: ''
-
+  replicas: 2
+  containerPort: 8080
   service:
     type: ClusterIP
-    port: 80
-    targetPort: 3000
-
-  containerPort: 3000
-
-  ingress:
-    enabled: false
-    className: ''
-    host: gateway.example.com
-    annotations: {}
-    tls:
-      enabled: true
-      secretName: ''
-
-  resources:
-    requests:
-      cpu: 500m
-      memory: 1Gi
-    limits:
-      cpu: '1'
-      memory: 2Gi
-
+    port: 8080
+  resources: {}
   autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 8
-    targetCPUUtilizationPercentage: 70
-    targetMemoryUtilizationPercentage: 80
-
+    enabled: false
   pdb:
+    enabled: false
+  ingress:
     enabled: true
-    minAvailable: 1
-
+    className: alb
+    host: gateway.example.com                          # TODO
+    annotations: *albAnnotations
   db:
     user: oryo-gateway
-    role: oryo-gateway
-    passwordSecret:
-      name: ''
-      key: password
+    passwordSecret: { name: oryo-db-gateway, key: password }
 
-  env: {}
-
-  # See dashboard.externalSecrets above.
-  externalSecrets: {}
-
-  livenessProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 30
-    periodSeconds: 30
-    timeoutSeconds: 5
-    failureThreshold: 3
-  readinessProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 5
-    periodSeconds: 10
-    timeoutSeconds: 3
-    failureThreshold: 3
-  startupProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 10
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 30
-
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  # Spread gateway pods across nodes/zones for resilience.
-  topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: kubernetes.io/hostname
-      whenUnsatisfiable: ScheduleAnyway
-      labelSelector:
-        matchLabels:
-          app.kubernetes.io/component: gateway
-
-# -----------------------------------------------------------------------------
-# Workers — background jobs and integrations. Internal only (no Service / no Ingress).
-# -----------------------------------------------------------------------------
 workers:
   enabled: true
-  replicas: 1
-
   image:
     repository: workers
-    tag: ''
-
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
+  replicas: 1
+  resources: {}
   autoscaling:
     enabled: false
-    minReplicas: 1
-    maxReplicas: 4
-    targetCPUUtilizationPercentage: 75
-
   pdb:
     enabled: false
-
+  tmpVolume:
+    enabled: false
   db:
     user: oryo-worker
-    role: oryo-worker
-    passwordSecret:
-      name: ''
-      key: password
+    passwordSecret: { name: oryo-db-worker, key: password }
 
-  env:
-    LOCAL_OBJECT_STORE_BASE_PATH: /app/tmp
-
-  # See dashboard.externalSecrets above.
-  externalSecrets: {}
-
-  # Workers have no HTTP server, so we rely on a process liveness check.
-  # Override with httpGet/tcpSocket/exec if a probe endpoint is added.
-  livenessProbe: {}
-  readinessProbe: {}
-  startupProbe: {}
-
-  # Mounted writable tmp dir (workers write object-store payloads here).
-  tmpVolume:
-    enabled: true
-    mountPath: /app/tmp
-    sizeLimit: 1Gi
-
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  topologySpreadConstraints: []
-
-# -----------------------------------------------------------------------------
-# API — public HTTP API (sensor config, executables).
-# Mirrors deploy/terraform/ecs-api.tf. Connects as the `oryo-dashboard`
-# Postgres role (same as ECS api today).
-#
-# Opt-in per env: set `api.enabled: true` in values-<env>.yaml. Omitting the
-# block (or the flag) leaves api off — no Deployment / Service / Ingress.
-# -----------------------------------------------------------------------------
 api:
-  enabled: false
-  replicas: 2
-
+  enabled: true
   image:
     repository: api
-    tag: ''
-
+  replicas: 2
+  containerPort: 8080
   service:
     type: ClusterIP
-    port: 80
-    targetPort: 5000
-
-  containerPort: 5000
-
-  ingress:
-    enabled: false
-    className: ''
-    host: api.example.com
-    annotations: {}
-    tls:
-      enabled: true
-      secretName: ''
-
-  resources:
-    requests:
-      cpu: 250m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
-
+    port: 8080
+  resources: {}
   autoscaling:
     enabled: false
-    minReplicas: 2
-    maxReplicas: 4
-    targetCPUUtilizationPercentage: 70
-    targetMemoryUtilizationPercentage: 80
-
   pdb:
     enabled: false
-    minAvailable: 1
-
-  # api on ECS uses the dashboard role (see ecs-api.tf).
+  ingress:
+    enabled: true
+    className: alb
+    host: api.example.com                            # TODO
+    annotations: *albAnnotations
   db:
     user: oryo-dashboard
-    role: oryo-dashboard
-    passwordSecret:
-      name: ''
-      key: password
+    passwordSecret: { name: oryo-db-dashboard, key: password }
 
-  env: {}
-
-  # See dashboard.externalSecrets above.
-  externalSecrets: {}
-
-  livenessProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 30
-    periodSeconds: 30
-    timeoutSeconds: 5
-    failureThreshold: 3
-  readinessProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 5
-    periodSeconds: 10
-    timeoutSeconds: 3
-    failureThreshold: 3
-  startupProbe:
-    httpGet:
-      path: /healthcheck
-      port: http
-    initialDelaySeconds: 10
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 30
-
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  topologySpreadConstraints: []
