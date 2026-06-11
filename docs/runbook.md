@@ -87,14 +87,15 @@ The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db
 
 > **Email note:** `RESEND_API_KEY` is required — the dashboard emails login codes via Resend (without it, users can't sign in). Use your own Resend API key (https://resend.com) or ask the Oryo team to provide one for your install.
 
-## 3. Fill in `values.yaml`
+## 3. Fill in `values.custom.yaml`
+
+The chart's `oryo-platform/values.yaml` ships with sane defaults and `# TODO` markers for the values you must supply. Put your overrides in `oryo-platform/values.custom.yaml` (gitignored) and pass both to helm:
 
 ```bash
-cp values.example.yaml values.yaml
-$EDITOR values.yaml
+$EDITOR oryo-platform/values.custom.yaml
 ```
 
-Replace placeholders (search for `TODO`):
+Override the values flagged `# TODO` in `oryo-platform/values.yaml`:
 - **`global.env.DOMAIN`** + **`APP_BASE_URL`** + **`API_BASE_URL`** — your domain.
 - **`global.env.DEFAULT_BUCKET`** — bucket name from `.env`.
 - **`global.db.host` / `database`** — your RDS endpoint and database name.
@@ -109,7 +110,8 @@ Replace placeholders (search for `TODO`):
 ```bash
 helm install oryo ./oryo-platform \
   --namespace <NAMESPACE> --create-namespace \
-  --values values.yaml \
+  --values oryo-platform/values.yaml \
+  --values oryo-platform/values.custom.yaml \
   --wait --timeout 10m
 ```
 

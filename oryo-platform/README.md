@@ -12,10 +12,11 @@ first.
 ## Install
 
 ```bash
-# from the repo root, after filling in values.yaml (see ../values.example.yaml)
+# from the repo root, after creating values.custom.yaml with your overrides
 helm install oryo ./oryo-platform \
   --namespace oryo --create-namespace \
-  --values values.yaml \
+  --values oryo-platform/values.yaml \
+  --values oryo-platform/values.custom.yaml \
   --wait --timeout 10m
 ```
 
@@ -26,9 +27,10 @@ already exist — `../scripts/verify.sh` verifies them and the
 
 ## Parameters
 
-Full defaults and inline docs live in [`values.yaml`](values.yaml). Start from
-[`../values.example.yaml`](../values.example.yaml) — it has every must-set
-value flagged with a `TODO`. The values you must provide:
+Full defaults and inline docs live in [`values.yaml`](values.yaml). Every
+must-set value is flagged `# TODO` — put overrides in `values.custom.yaml`
+(gitignored) and layer it as the second `-f` to `helm install`. The values
+you must provide:
 
 | Key | Description | Source |
 |---|---|---|

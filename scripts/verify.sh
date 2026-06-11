@@ -223,10 +223,13 @@ Plug these into values.yaml:
 
   global.env.DEFAULT_BUCKET: $BUCKET_NAME
 
-Then fill the rest (domain, RDS host, cert ARN, ingress hosts, default tenant)
-and install:
+Then put the rest (domain, RDS host, cert ARN, ingress hosts, default tenant)
+in oryo-platform/values.custom.yaml (gitignored — override only what differs
+from the chart's defaults), and install:
 
-  cp values.example.yaml values.yaml && \$EDITOR values.yaml
-  helm install oryo ./oryo-platform --namespace $NAMESPACE --create-namespace --values values.yaml --wait --timeout 15m
+  \$EDITOR oryo-platform/values.custom.yaml
+  helm install oryo ./oryo-platform --namespace $NAMESPACE --create-namespace \\
+    --values oryo-platform/values.yaml --values oryo-platform/values.custom.yaml \\
+    --wait --timeout 15m
 
 EOF
