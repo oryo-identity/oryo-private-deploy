@@ -68,32 +68,19 @@ flowchart LR
     class EXTDEPS ext
 ```
 
-**Reading the diagram:**
-- **Solid** arrows = always-on runtime traffic (admin → dashboard, sensor → gateway, pod → DB / S3). **Dotted** = once-per-event (image pull, login emails, installer fetch).
-- The two-hop installer fetch — `sensor → api.<DOMAIN>` retrieves the install script, which signed-redirects to `Oryo S3`; the bytes come from Oryo's bucket directly.
-- Each pod connects to RDS as its **own least-privilege Postgres role** (`oryo-dashboard` / `oryo-gateway` / `oryo-worker`); pod → S3 uses IRSA, no static AWS credentials. See [docs/glossary.md](docs/glossary.md#per-service-postgres-roles) for the per-role details the diagram leaves out.
-
 ## Prerequisites
 
-This install kit **creates nothing in your AWS account.** You provision the AWS-side prerequisites yourself (per [docs/prereqs.md](docs/prereqs.md)); `verify.sh` then verifies they exist before install and prints the values you need to drop into `values.yaml`.
-
-You provide:
-
-- AWS account + EKS cluster (Auto Mode recommended) in a supported region
-- Postgres database (RDS recommended) reachable from the cluster
+- EKS cluster (Auto Mode recommended)
+- Postgres database (RDS recommended)
 - A domain you control, with a Route 53 hosted zone in the same AWS account
 - An ACM certificate for `*.<your-domain>` in the same region as the cluster (terminates HTTPS at the ALBs)
-- The AWS-side prerequisites in [docs/prereqs.md](docs/prereqs.md): S3 bucket, IAM policy + IRSA role (S3 + Bedrock), public-subnet tags, dedicated arm64 NodePool, Bedrock model access (Claude 3 Haiku + Nova Micro) enabled in the cluster's region
-- Oryo has added your AWS account ID to its ECR repository policies (contact your Oryo rep if your AWS account has not been provisioned access to our ECR images)
-
-Tools on your machine:
-
-- `aws` CLI (v2)
-- `kubectl`
-- `helm` (v3)
-- `jq`
-- `openssl` (only for `--bootstrap-secrets`)
-- `eksctl` (only for the easy-path IRSA setup in prereqs.md §2b)
+- The AWS-side [docs/prereqs.md](docs/prereqs.md):
+    - S3 bucket
+    - IAM policy + IRSA role (S3 + Bedrock)
+    - public-subnet tags
+    - dedicated arm64 NodePool
+    - Bedrock model access (Claude 3 Haiku + Nova Micro) 
+- Make sure that Oryo has added your AWS account ID to its ECR repository policies. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images.
 
 ## Quick start
 
@@ -105,7 +92,7 @@ Tools on your machine:
 #    5 required k8s secrets.
 cp .env.example .env
 $EDITOR .env
-./scripts/verify.sh --bootstrap-secrets
+./scripts/verify.sh
 
 # 3. Fill in the values template
 cp values.example.yaml values.yaml
@@ -120,9 +107,6 @@ helm install oryo ./oryo-platform \
 # 5. Point DNS at the ALBs
 kubectl -n oryo get ingress
 # create CNAMEs in Route 53 for app/gateway/api → ALB hostname
-
-# 6. Smoke test
-curl -I https://app.<your-domain>/healthcheck
 ```
 
 See [docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
@@ -143,8 +127,6 @@ Checks:
 
 Each `✗` points at the relevant section of [docs/prereqs.md](docs/prereqs.md).
 
-**Optional secret bootstrap.** Pass `--bootstrap-secrets` and the script generates + creates the 5 k8s secrets for you (session secret, `oryo-db-admin` from `.env`, three randomly-generated db-role passwords). Without the flag it only verifies they exist — bring your own (ESO, Vault, SealedSecrets, manual `kubectl`) if you prefer to manage secrets externally.
-
 ## License
 
-Proprietary. See [LICENSE.md](LICENSE.md). Contact licensing@oryo.io.
+Proprietary. See [LICENSE.md](LICENSE.md). Contact info@oryo.io.

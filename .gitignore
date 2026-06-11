@@ -1,18 +1,18 @@
-# Customer's actual values file — copied from values.example.yaml
+# Values + env (per-install)
 values.yaml
-
-# Local env config (scripts/verify.sh reads from .env)
+**/values.custom.yaml
 .env
 .env.local
 
-# Helm pull artifacts
+# Helm
 *.tgz
 
-# OS noise
+# Oryo-internal tooling (not shipped to customers)
+scripts/internal/
+
+# OS / editor noise
 .DS_Store
 Thumbs.db
-
-# Editor
 .vscode/
 .idea/
 *.swp
