@@ -1,8 +1,8 @@
 name: Chart version bump
 
-# Fail a PR that changes the chart without bumping oryo-platform/Chart.yaml's
-# `version`. The release promotion requires a fresh version because the charts/
-# ECR repo is immutable — this catches a forgotten bump at PR time, not release.
+# Every PR that touches the chart must bump Chart.yaml `version`. Releases publish
+# to an immutable registry, so a reused version fails the release — catching it
+# here turns that into a quick PR fix instead.
 
 on:
   pull_request:
