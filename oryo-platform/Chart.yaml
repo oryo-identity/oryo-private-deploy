@@ -4,7 +4,7 @@ description: |
   Helm chart for the Oryo Platform — deploys the gateway, workers, and dashboard
   services to a Kubernetes cluster.
 type: application
-# Chart SemVer, auto-bumped by PR.
+# Chart SemVer; bump each PR (CI-enforced).
 version: 0.1.1
 # Platform version, stamped at release.
 appVersion: '0.1.0'
