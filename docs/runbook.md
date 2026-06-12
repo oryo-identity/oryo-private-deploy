@@ -217,6 +217,27 @@ Download the CA from **Settings → Installation → Download CA**, add it to yo
 
 ---
 
+## Checking your version
+
+What chart version is installed:
+
+```bash
+helm list -A
+# CHART = oryo-platform-<chartVersion>;  APP VERSION = the platform build it deploys
+```
+
+What's actually running (the source of truth — immutable image digests):
+
+```bash
+kubectl get pods -n <ns> \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
+```
+
+The chart version and the platform (`APP VERSION`) move independently — a chart
+fix can ship without a platform change, so compare both when reporting an issue.
+
+---
+
 ## Upgrades
 
 ```bash

@@ -42,6 +42,10 @@ global:
       secretName: oryo-session-secret
       key: value
 
+# Sensor compatibility range served to clients (stamped at release).
+sensor:
+  versionRange: ''
+
 # -----------------------------------------------------------------------------
 # ServiceAccount — used by all workloads. Annotate with an IAM role ARN for
 # IRSA on EKS so pods get S3 + Bedrock access without static credentials.

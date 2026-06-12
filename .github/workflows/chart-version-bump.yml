@@ -1,0 +1,39 @@
+name: Chart version bump
+
+# Every PR that touches the chart must bump Chart.yaml `version`. Releases publish
+# to an immutable registry, so a reused version fails the release — catching it
+# here turns that into a quick PR fix instead.
+
+on:
+  pull_request:
+    paths:
+      - 'oryo-platform/**'
+
+jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a Chart.yaml version bump
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          new="$(yq '.version' oryo-platform/Chart.yaml)"
+          old="$(git show "$BASE_SHA:oryo-platform/Chart.yaml" | yq '.version')"
+
+          if [ "$new" = "$old" ]; then
+            echo "::error file=oryo-platform/Chart.yaml::oryo-platform/ changed but Chart.yaml version is still $new — bump it."
+            exit 1
+          fi
+
+          highest="$(printf '%s\n%s\n' "$old" "$new" | sort -V | tail -1)"
+          if [ "$highest" != "$new" ]; then
+            echo "::error file=oryo-platform/Chart.yaml::Chart.yaml version went backwards ($old -> $new)."
+            exit 1
+          fi
+
+          echo "chart version bump OK: $old -> $new"

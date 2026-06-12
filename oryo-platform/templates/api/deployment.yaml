@@ -45,6 +45,10 @@ spec:
               protocol: TCP
           env:
             {{- include "oryo.serviceEnv" (list . $svc $component) | nindent 12 }}
+            {{- with .Values.sensor.versionRange }}
+            - name: SENSOR_VERSION_RANGE
+              value: {{ . | quote }}
+            {{- end }}
           {{- with $svc.startupProbe }}
           {{- if . }}
           startupProbe:
