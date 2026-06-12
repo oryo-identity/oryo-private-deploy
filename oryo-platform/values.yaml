@@ -42,13 +42,8 @@ global:
       secretName: oryo-session-secret
       key: value
 
-# -----------------------------------------------------------------------------
-# Sensor — desktop sensor compatibility.
-# -----------------------------------------------------------------------------
+# Sensor compatibility range served to clients (stamped at release).
 sensor:
-  # Compatible sensor version range for this release. The platform serves the
-  # highest sensor matching this range from the install bucket. Stamped per
-  # release by the promotion; leave empty for from-source/dev installs.
   versionRange: ''
 
 # -----------------------------------------------------------------------------
