@@ -1,37 +1,37 @@
-# Oryo Private Deployment — Runbook
+# Oryo Private Deployment Runbook
 
-End-to-end bootstrap for installing Oryo in your own AWS account. Targets EKS Auto Mode with arm64 (Graviton) nodes.
+How to install Oryo in your own AWS account. This targets EKS Auto Mode with arm64 (Graviton) nodes.
 
 ---
 
-## Prerequisites — what you bring
+## Prerequisites
 
-These must already exist before you start. **The install kit creates nothing in your AWS account** — you provision these, `verify.sh` verifies them. The AWS resources (S3 bucket, IAM role, subnet tags, NodePool arm64, database) have exact specs in **[docs/prereqs.md](prereqs.md)**.
+These need to exist before you start. The install kit doesn't create anything in your AWS account. You provision the resources, and `verify.sh` checks them. Exact specs for the AWS resources (S3 bucket, IAM role, subnet tags, arm64 NodePool, database) are in [docs/prereqs.md](prereqs.md).
 
 | Requirement | Notes |
 |---|---|
-| **AWS account** | With SSO + admin access for the account you'll deploy into. |
-| **EKS cluster** | Auto Mode recommended. Same AWS account + region as the rest. Must be able to provision **arm64 (Graviton)** nodes — see [docs/prereqs.md §4](prereqs.md). |
-| **S3 bucket, IAM role, subnet tags** | You create these — [docs/prereqs.md §1–3](prereqs.md). `verify.sh` verifies them. |
-| **Bedrock model access** | Per-region opt-in for Claude 3 Haiku + Nova Micro — [docs/prereqs.md §5](prereqs.md). Optional in the sense the install still succeeds without it, but auto-classification, active discovery, and the DLP policy go dark — see [Bedrock-dependent features](#bedrock-dependent-features). |
-| **Postgres database** | RDS recommended. Reachable from the cluster VPC on 5432. The target DB must exist (default `postgres` works) — [docs/prereqs.md §6](prereqs.md). |
-| **Domain, Route 53 zone, ACM cert** | Route 53 hosted zone for your domain in the same AWS account; wildcard ACM cert for `*.<your-domain>` in the cluster's region, `ISSUED` — [docs/prereqs.md §7](prereqs.md). |
-| **Oryo ECR pull grant** | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images. |
+| AWS account | With SSO and admin access for the account you'll deploy into. |
+| EKS cluster | Auto Mode recommended. Same AWS account and region as everything else. It must be able to provision arm64 (Graviton) nodes; see [docs/prereqs.md §4](prereqs.md). |
+| S3 bucket, IAM role, subnet tags | You create these ([docs/prereqs.md §1–3](prereqs.md)); `verify.sh` checks them. |
+| Bedrock model access | Per-region opt-in for Claude 3 Haiku and Nova Micro ([docs/prereqs.md §5](prereqs.md)). The install still succeeds without it, but auto-classification, active discovery, and the DLP policy won't work; see [Bedrock-dependent features](#bedrock-dependent-features). |
+| Postgres database | RDS recommended. Reachable from the cluster VPC on port 5432. The target database must exist (the default `postgres` works); see [docs/prereqs.md §6](prereqs.md). |
+| Domain, Route 53 zone, ACM cert | A Route 53 hosted zone for your domain in the same AWS account, and a wildcard ACM cert for `*.<your-domain>` in the cluster's region, in status `ISSUED`. See [docs/prereqs.md §7](prereqs.md). |
+| Oryo ECR pull grant | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your account hasn't been provisioned access yet. |
 
-`verify.sh` then verifies all of the above and (optionally) bootstraps the in-cluster k8s secrets; `helm install` does the rest.
+`verify.sh` checks all of the above and can optionally bootstrap the in-cluster Kubernetes secrets. `helm install` does the rest.
 
 ---
 
 ## 0. Tools
 
-These tools need to be installed locally to successfully go through the full flow of this runbook:
+You need these installed locally to follow the runbook:
 
-- `aws` CLI (v2) — auth + every AWS-side operation
-- `kubectl` — talk to your EKS cluster
-- `helm` (v3) — install + upgrade the chart
-- `eksctl` — only needed for the eksctl-path IRSA setup in [docs/prereqs.md §2b](prereqs.md) (skip if you create the role manually)
+- `aws` CLI (v2) — authentication and every AWS-side operation
+- `kubectl` — to talk to your EKS cluster
+- `helm` (v3, or v4 but not 4.2.1, which can hang upgrades for several minutes per hook while cleaning up resources, so pin to 4.2.0 or a later fixed release) — to install and upgrade the chart
+- `eksctl` — only for the eksctl IRSA path in [docs/prereqs.md §2b](prereqs.md) (skip it if you create the role manually)
 - `jq` — used by `verify.sh` to inspect Auto Mode NodePools during preflight
-- `openssl` — used by `verify.sh --bootstrap-secrets` to generate session + role passwords (system default works on macOS/Linux)
+- `openssl` — used by `verify.sh --bootstrap-secrets` to generate session and role passwords (the system default works on macOS and Linux)
 - `docker` (optional) — only for local image verification
 
 ## 1. Connect
@@ -48,19 +48,19 @@ aws eks update-kubeconfig --profile <your-profile> --region <your-region> --name
 kubectl get nodes
 ```
 
-Sanity-check the cluster is **EKS Auto Mode**:
+Confirm the cluster is EKS Auto Mode:
 
 ```bash
 kubectl get nodepool 2>/dev/null
-# If this returns rows like `general-purpose` / `system` → Auto Mode. ✓
-# If "no resources" → classic node groups (not currently supported by this runbook).
+# Rows like `general-purpose` / `system` mean Auto Mode.
+# "no resources" means classic node groups, which this runbook doesn't cover.
 ```
 
 ## 2. Provision prerequisites, then run the preflight
 
-The install kit **creates nothing in your AWS account.** First create the prerequisites yourself per **[docs/prereqs.md](prereqs.md)** (S3 bucket, IAM role, subnet tags, NodePool arm64, Postgres database) — using the console, CLI, or your own Terraform.
+The install kit doesn't create anything in your AWS account. Create the prerequisites yourself per [docs/prereqs.md](prereqs.md) (S3 bucket, IAM role, subnet tags, arm64 NodePool, Postgres database), using the console, CLI, or your own Terraform.
 
-Then run `verify.sh`, which **verifies** everything exists and prints the values you need:
+Then run `verify.sh`. It checks that everything exists and prints the values you'll need:
 
 ```bash
 cd customer
@@ -70,40 +70,40 @@ $EDITOR .env          # AWS_PROFILE, AWS_REGION, ACCOUNT_ID, CLUSTER_NAME, NAMES
 ./scripts/verify.sh    # preflight — checks bucket, IAM role, subnet tags, arm64, secrets
 ```
 
-It prints a ✓/✗ for each check; if anything's missing it points you at the right section of `prereqs.md`. Once all green, it prints the role ARN + bucket name for `values.yaml`.
+It prints a pass/fail for each check, and points you at the right section of `prereqs.md` for anything that's missing. Once everything passes, it prints the role ARN and bucket name for `values.yaml`.
 
-### K8s secrets
+### Kubernetes secrets
 
-The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db-admin`, `oryo-db-dashboard`, `oryo-db-gateway`, `oryo-db-worker`, `oryo-resend-api-key`. Two ways:
+The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db-admin`, `oryo-db-dashboard`, `oryo-db-gateway`, `oryo-db-worker`, `oryo-resend-api-key`. Two options:
 
-- **Bring your own** (ESO / Vault / SealedSecrets / manual `kubectl`) — `verify.sh` verifies they exist.
-- **Let the script generate them** — fill `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD`, and `RESEND_API_KEY` in `.env`, then:
+- Bring your own (ESO, Vault, SealedSecrets, or manual `kubectl`). `verify.sh` checks that they exist.
+- Let the script generate them. Fill in `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD`, and `RESEND_API_KEY` in `.env`, then run:
   ```bash
   ./scripts/verify.sh --bootstrap-secrets
   ```
-  This generates the random ones (session + per-service DB passwords) and creates `oryo-db-admin` from your `.env`. Re-running is idempotent.
+  This generates the random secrets (session and per-service DB passwords) and creates `oryo-db-admin` from your `.env`. It's safe to re-run.
 
-> **Database note:** the target Postgres database must already exist (default `postgres` works, or create your own and name it in `values.yaml` → `global.db.database`). dbInit creates the per-service roles + schema, not the database itself.
+> Database note: the target Postgres database must already exist (the default `postgres` works, or create your own and set it in `values.yaml` → `global.db.database`). dbInit creates the per-service roles and schema but doesn't create the database itself.
 
-> **Email note:** `RESEND_API_KEY` is required — the dashboard emails login codes via Resend (without it, users can't sign in). Use your own Resend API key (https://resend.com) or ask the Oryo team to provide one for your install.
+> Email note: `RESEND_API_KEY` is required. The dashboard emails login codes through Resend, so without it users can't sign in. Use your own Resend API key (https://resend.com) or ask the Oryo team to provide one.
 
 ## 3. Fill in `values.custom.yaml`
 
-The chart's `oryo-platform/values.yaml` ships with sane defaults and `# TODO` markers for the values you must supply. Put your overrides in `oryo-platform/values.custom.yaml` (gitignored) and pass both to helm:
+The chart's `oryo-platform/values.yaml` ships with working defaults and `# TODO` markers for the values you need to supply. Put your overrides in `oryo-platform/values.custom.yaml` (gitignored) and pass both files to helm:
 
 ```bash
 $EDITOR oryo-platform/values.custom.yaml
 ```
 
-Override the values flagged `# TODO` in `oryo-platform/values.yaml`:
-- **`global.env.DOMAIN`** + **`APP_BASE_URL`** + **`API_BASE_URL`** — your domain.
-- **`global.env.DEFAULT_BUCKET`** — bucket name from `.env`.
-- **`global.db.host` / `database`** — your RDS endpoint and database name.
-- **`serviceAccount.annotations.eks.amazonaws.com/role-arn`** — IRSA role ARN from `verify.sh`.
-- **`alb.ingress.kubernetes.io/certificate-arn`** — ACM cert ARN (from prereqs; 3 ingresses use it).
-- **Ingress hostnames** — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
-- **`dbInit.defaultTenant`** — your org name + owner email.
-- **`global.env.ENV_NAME`** — must be one of `local | dev | stage | prod` (Zod enum). **Set this to `stage`** for every private-deploy install. `stage` is the private-deploy value — it's how the platform code distinguishes customer-managed clusters from Oryo's own infra so we can add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
+Set the values flagged `# TODO` in `oryo-platform/values.yaml`:
+- `global.env.DOMAIN`, `APP_BASE_URL`, `API_BASE_URL` — your domain.
+- `global.env.DEFAULT_BUCKET` — the bucket name from `.env`.
+- `global.db.host` / `database` — your RDS endpoint and database name.
+- `serviceAccount.annotations.eks.amazonaws.com/role-arn` — the IRSA role ARN from `verify.sh`.
+- `alb.ingress.kubernetes.io/certificate-arn` — the ACM cert ARN from prereqs (all 3 ingresses use it).
+- Ingress hostnames — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
+- `dbInit.defaultTenant` — your org name and owner email.
+- `global.env.ENV_NAME` — must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
 
 ## 4. `helm install`
 
@@ -112,16 +112,16 @@ helm install oryo ./oryo-platform \
   --namespace <NAMESPACE> --create-namespace \
   --values oryo-platform/values.yaml \
   --values oryo-platform/values.custom.yaml \
-  --wait --timeout 10m
+  --atomic --cleanup-on-fail --wait --timeout 10m
 ```
 
-> If you bootstrapped secrets with `verify.sh --bootstrap-secrets`, the namespace already exists — `--create-namespace` is a harmless no-op.
+> If you bootstrapped secrets with `verify.sh --bootstrap-secrets`, the namespace already exists and `--create-namespace` is a harmless no-op.
 
-**Timeout matters.** First install on a cold cluster pulls images, provisions new arm64 nodes, runs the dbInit hook, then waits for all pods to become Ready — a single end-to-end pass that can take a few minutes. 10 minutes is usually plenty of headroom; bump it higher if your cluster is provisioning capacity from scratch.
+The timeout matters. The first install on a cold cluster pulls images, provisions arm64 nodes, runs the dbInit hook, and then waits for every pod to become Ready. That can take a few minutes. 10 minutes is usually plenty. Raise it if your cluster is provisioning capacity from scratch.
 
-The `dbInit` hook (pre-install + pre-upgrade) connects to RDS as the admin user, creates the per-service Postgres roles using the passwords from the k8s Secrets, applies schema and RLS policies, seeds global rules, seeds the default tenant. Everything is idempotent, so it runs on every install and upgrade. **The target database must already exist** — use the default `postgres` database or create your own beforehand.
+The `dbInit` hook (pre-install and pre-upgrade) connects to RDS as the admin user, creates the per-service Postgres roles using the passwords from the Kubernetes secrets, applies the schema and RLS policies, seeds the global rules, and seeds the default tenant. It's idempotent, so it runs on every install and upgrade. The target database must already exist. Use the default `postgres` database or create your own beforehand.
 
-Watch:
+Watch the rollout:
 ```bash
 kubectl -n <NAMESPACE> get pods
 kubectl -n <NAMESPACE> logs job/oryo-oryo-platform-db-init --tail=50
@@ -129,18 +129,18 @@ kubectl -n <NAMESPACE> logs job/oryo-oryo-platform-db-init --tail=50
 
 ## 5. Point DNS at the ALBs
 
-After install, Auto Mode provisions ALBs (~2–3 min). Get the hostnames:
+After install, Auto Mode provisions the ALBs (about 2–3 minutes). Get the hostnames:
 
 ```bash
 kubectl -n <NAMESPACE> get ingress
 ```
 
-The `ADDRESS` column shows hostnames like `k8s-...elb.<region>.amazonaws.com`. The chart's `alb.ingress.kubernetes.io/group.name` annotation is intended to merge all 3 ingresses into 1 ALB, but Auto Mode currently creates 3 separate ALBs — that's functional, just slightly more billing.
+The `ADDRESS` column shows hostnames like `k8s-...elb.<region>.amazonaws.com`. The chart's `alb.ingress.kubernetes.io/group.name` annotation is meant to merge all 3 ingresses onto one ALB, but Auto Mode currently creates a separate ALB per ingress. That works fine, just with a bit more billing.
 
-You need 3 CNAMEs in your Route 53 hosted zone pointing each subdomain at its ALB:
-- `app.<DOMAIN>` → dashboard's ALB hostname
-- `gateway.<DOMAIN>` → gateway's ALB hostname
-- `api.<DOMAIN>` → api's ALB hostname
+You need 3 CNAMEs in your Route 53 hosted zone, one per subdomain:
+- `app.<DOMAIN>` → the dashboard's ALB hostname
+- `gateway.<DOMAIN>` → the gateway's ALB hostname
+- `api.<DOMAIN>` → the api's ALB hostname
 
 ### CLI (recommended)
 
@@ -166,21 +166,21 @@ EOF
 aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" --change-batch file:///tmp/dns.json
 ```
 
-`UPSERT` = create-or-replace, safe to re-run if you tweak something.
+`UPSERT` means create-or-replace, so it's safe to re-run if you change something.
 
-### Console alternative
+### Console
 
-Route 53 → Hosted zones → your zone → **Create record** three times:
-- Record name: `app` / `gateway` / `api` (just the subdomain)
+Route 53 → Hosted zones → your zone → Create record, three times:
+- Record name: `app`, `gateway`, or `api` (just the subdomain)
 - Record type: `CNAME`
-- Value: paste the corresponding ALB hostname from `kubectl get ingress`
+- Value: the matching ALB hostname from `kubectl get ingress`
 - TTL: 60
 
-### Automatic alternative
+### Automatic (ExternalDNS)
 
-Install [ExternalDNS](https://kubernetes-sigs.github.io/external-dns/) once; it watches Ingresses and writes Route 53 records automatically. Worth it if you redeploy a lot.
+Install [ExternalDNS](https://kubernetes-sigs.github.io/external-dns/) once and it watches your Ingresses and writes the Route 53 records for you. Worth it if you redeploy often.
 
-CNAMEs propagate in 1–5 min after creation.
+CNAMEs propagate within 1–5 minutes.
 
 ## 6. Smoke test
 
@@ -191,50 +191,50 @@ curl -I https://api.<DOMAIN>/healthcheck
 # Expect 200 OK on all three
 ```
 
-Open `https://app.<DOMAIN>` in a browser to access the dashboard.
+Then open `https://app.<DOMAIN>` in a browser to reach the dashboard.
 
-> **Login email:** login codes are emailed via Resend using `RESEND_API_KEY` (required, set in `.env`; the chart wires the corresponding `oryo-resend-api-key` secret into the dashboard pod). SMTP / SES support is in flight.
+> Login email: login codes are emailed through Resend using `RESEND_API_KEY` (required, set in `.env`). The chart wires the `oryo-resend-api-key` secret into the dashboard pod. SMTP/SES support is on the way.
 
 ---
 
 ## 7. Install a sensor (end-to-end verification)
 
-The real proof a deployment works: install a sensor and confirm it intercepts AI traffic using the global rules seeded at install.
+The best way to confirm a deployment works is to install a sensor and watch it intercept AI traffic using the global rules seeded at install.
 
-Detailed instructions — registration token, install one-liner, CA download — live in the dashboard at **Settings → Installation**. This section is the high-level shape; follow the dashboard for the actual commands.
+The detailed steps (registration token, install one-liner, CA download) are in the dashboard under Settings → Installation. This section covers the overall shape. Follow the dashboard for the exact commands.
 
-### MDM fleet rollout (Intune / JAMF / etc.)
+### MDM fleet rollout (Intune, JAMF, etc.)
 
-1. **Push the Oryo CA** from **Settings → Installation → Download CA** as a trusted root certificate via your MDM's standard certificate-distribution profile.
-2. **Push the install one-liner** (also from **Settings → Installation**) via your MDM's run-script policy.
-3. **Confirm** — the dashboard's Devices page populates as sensors register.
+1. Push the Oryo CA from Settings → Installation → Download CA as a trusted root certificate, using your MDM's certificate-distribution profile.
+2. Push the install one-liner (also under Settings → Installation) using your MDM's run-script policy.
+3. Confirm the dashboard's Devices page fills in as sensors register.
 
-### Manual testing (one device)
+### Manual test (one device)
 
-Download the CA from **Settings → Installation → Download CA**, add it to your system's trust store, then run the install one-liner from the same page. Visit a watched site (e.g. `chatgpt.com`) — should load with no TLS error and show up in the dashboard within a few seconds.
+Download the CA from Settings → Installation → Download CA, add it to your system trust store, then run the install one-liner from the same page. Visit a watched site (for example `chatgpt.com`). It should load with no TLS error and appear in the dashboard within a few seconds.
 
-> **NOTE:** Each tenant has its own root CA. If you tear down and reinstall the platform, the CA regenerates — re-download and re-trust before retesting.
+> Note: each tenant has its own root CA. If you tear down and reinstall the platform, the CA regenerates, so re-download and re-trust it before testing again.
 
 ---
 
 ## Checking your version
 
-What chart version is installed:
+To see which chart version is installed:
 
 ```bash
 helm list -A
 # CHART = oryo-platform-<chartVersion>;  APP VERSION = the platform build it deploys
 ```
 
-What's actually running (the source of truth — immutable image digests):
+To see what's actually running (the source of truth, immutable image digests):
 
 ```bash
 kubectl get pods -n <ns> \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
 
-The chart version and the platform (`APP VERSION`) move independently — a chart
-fix can ship without a platform change, so compare both when reporting an issue.
+The chart version and the platform version (`APP VERSION`) move independently. A chart
+fix can ship without a platform change, so report both when you file an issue.
 
 ---
 
@@ -244,54 +244,60 @@ fix can ship without a platform change, so compare both when reporting an issue.
 helm upgrade oryo ./oryo-platform \
   --namespace <NAMESPACE> \
   --values values.yaml \
-  --wait --timeout 10m
+  --atomic --cleanup-on-fail --wait --timeout 10m
 ```
 
-The `dbInit` hook re-runs on every upgrade (idempotent — schema additions are `IF NOT EXISTS`).
+The `dbInit` hook re-runs on every upgrade. It's idempotent (schema additions use `IF NOT EXISTS`).
 
 To skip the dbInit hook on upgrades (faster), set `dbInit.enabled: false` in `values.yaml` before running `helm upgrade`.
+
+`--atomic` rolls the release back automatically if the upgrade fails or times out, so a bad run can't leave it half-applied. If an upgrade is interrupted before it finishes (for example, the process is killed mid-run), the release can be left in a `pending-upgrade` state that blocks the next upgrade with `another operation (install/upgrade/rollback) is in progress`. Clear it and retry:
+
+```bash
+helm rollback oryo --namespace <NAMESPACE>
+```
 
 ---
 
 ## Secret rotation
 
-The chart consumes 6 k8s Secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`). Rotating them in production has different choreography depending on which one — these are the Oryo-specific gotchas. Coordinate with your secrets store (Vault, AWS Secrets Manager, ESO, etc.) for the actual key delivery; the dance below is what the chart expects.
+The chart consumes 6 Kubernetes secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`). Rotating them in production works differently depending on which one, and there are a few Oryo-specific things to watch for. Coordinate the actual key delivery with your secrets store (Vault, AWS Secrets Manager, ESO, etc.). The steps below are what the chart expects.
 
 ### `oryo-session-secret`
 
-Rotating it **logs every signed-in user out**. The dashboard verifies incoming cookies with the current key; cookies signed with the old key fail HMAC verification and the user gets bounced to login.
+Rotating this logs every signed-in user out. The dashboard verifies incoming cookies with the current key, so cookies signed with the old key fail HMAC verification and the user is bounced to login.
 
-Procedure:
-1. Update the Secret with the new value.
-2. Restart dashboard pods (`kubectl rollout restart deploy/oryo-oryo-platform-dashboard`).
+Steps:
+1. Update the secret with the new value.
+2. Restart the dashboard pods (`kubectl rollout restart deploy/oryo-oryo-platform-dashboard`).
 
-No multi-key / overlap window is supported. If user-facing downtime matters, pick a low-traffic window.
+There's no multi-key overlap window. If user-facing downtime matters, pick a low-traffic window.
 
 ### Per-service DB role passwords (`oryo-db-{dashboard,gateway,worker}`)
 
-The chart's `dbInit` hook **does not** re-issue `ALTER ROLE … WITH PASSWORD` on existing roles — re-doing it on every helm upgrade churns the Postgres catalog for no benefit when the k8s Secret is stable, so password rotation is treated as a separate explicit operation. That means rotation requires syncing the Postgres role's password with the new k8s Secret yourself, in this order:
+The `dbInit` hook does not re-issue `ALTER ROLE … WITH PASSWORD` on existing roles. Doing that on every helm upgrade would churn the Postgres catalog for no benefit when the secret hasn't changed, so password rotation is a separate, explicit operation. You sync the Postgres role's password with the new Kubernetes secret yourself, in this order:
 
 1. Generate the new password.
-2. `ALTER ROLE "oryo-<service>" WITH PASSWORD '<new>'` against RDS (use a debug pod that mounts `oryo-db-admin`, see "Ad-hoc DB access" below).
-3. Update the k8s Secret with the same new value.
+2. Run `ALTER ROLE "oryo-<service>" WITH PASSWORD '<new>'` against RDS (use a debug pod that mounts `oryo-db-admin`, see "Ad-hoc DB access" below).
+3. Update the Kubernetes secret with the same value.
 4. Restart the affected service pods.
 
-If you do step 3 before step 2, the new pods crashloop on `28P01 invalid_password` until step 2 lands. If you do step 2 before step 4, the old pods (still using the old password) crashloop on `28P01` until they restart. Either ordering works — just don't leave a gap between them.
+If you do step 3 before step 2, the new pods crashloop on `28P01 invalid_password` until step 2 lands. If you do step 2 before step 4, the old pods (still using the old password) crashloop on `28P01` until they restart. Either order works. Just don't leave a gap between the steps.
 
 ### `oryo-db-admin` (RDS master)
 
-Used only by the `dbInit` hook during `helm install` / `helm upgrade` — long-running pods don't mount it.
+Used only by the `dbInit` hook during `helm install` and `helm upgrade`. Long-running pods don't mount it.
 
-Procedure:
+Steps:
 1. Rotate the password on the RDS instance (`aws rds modify-db-instance --master-user-password`).
-2. Update the k8s Secret.
-3. Next `helm upgrade` picks it up. (You don't need to bounce anything.)
+2. Update the Kubernetes secret.
+3. The next `helm upgrade` picks it up. (You don't need to restart anything.)
 
-If the rotation happens **between** upgrades, no pod is affected — only the next dbInit run will use it.
+If you rotate it between upgrades, no pod is affected. Only the next dbInit run uses it.
 
 ### `oryo-resend-api-key`
 
-Rotate on the Resend side, update the k8s Secret, restart dashboard pods. Mid-rotation in-flight login codes may fail to send; users will retry.
+Rotate it on the Resend side, update the Kubernetes secret, and restart the dashboard pods. In-flight login codes during the rotation may fail to send. Users will retry.
 
 ### Ad-hoc DB access (for the `ALTER ROLE` step)
 
@@ -306,37 +312,37 @@ kubectl -n $NS run psql-debug --rm -it --restart=Never --image=postgres:15 \
   psql "host=$RDS user=postgres dbname=postgres sslmode=require"
 ```
 
-The pod is ephemeral (`--rm`) and never persists the password to disk. Quit with `\q` and the pod is gone.
+The pod is ephemeral (`--rm`) and never writes the password to disk. Quit with `\q` and the pod is gone.
 
-> **NOTE:** k8s Secrets are base64 (not encrypted) in etcd by default. For production, enable EKS envelope encryption with KMS — see [AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/enable-kms.html). Without it, anyone with `secrets/get` RBAC sees the plaintext.
+> Note: Kubernetes secrets are only base64-encoded in etcd by default, so they aren't encrypted at rest. For production, enable EKS envelope encryption with KMS (see [AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/enable-kms.html)). Without it, anyone with `secrets/get` RBAC can read the plaintext.
 
 ---
 
 ## Gotchas
 
-Standard AWS / k8s / Helm operational gotchas (wrong-account SSO, ACM `PENDING_VALIDATION`, RDS security group reachability for `dbInit`, etc.) aren't repeated here. These are the Oryo-specific quirks that have actually surprised people:
+Standard AWS, Kubernetes, and Helm gotchas (wrong-account SSO, ACM stuck in `PENDING_VALIDATION`, RDS security-group reachability for `dbInit`, etc.) aren't repeated here. These are the Oryo-specific ones that have actually tripped people up:
 
-- **Don't patch the built-in `general-purpose` NodePool to add arm64.** Auto Mode reconciles it back to default. Use the dedicated `oryo-arm64` NodePool from [docs/prereqs.md §4](prereqs.md).
-- **Don't install the standalone `aws-load-balancer-controller`.** Auto Mode ships its own ALB controller; the standalone one crashes with `ec2imds GetMetadata` timeouts and fights it for ingress reconciliation. The chart's `IngressClass` already routes to the built-in controller.
-- **`group.name` ingress annotation doesn't merge ALBs in practice.** Chart sets `alb.ingress.kubernetes.io/group.name: oryo` intending one shared ALB across the 3 ingresses; Auto Mode currently provisions one per ingress. Functional, just slightly more billing.
-- **`dbInit` hook failure rolls back the install** and the Job is cleaned up automatically — post-mortem logs are gone. Either stream `kubectl -n <NS> logs job/oryo-oryo-platform-db-init -f` during the install, or use `--no-hooks` to debug the rest separately and run dbInit manually.
-- **Bedrock failures degrade silently.** Without model access or IRSA bedrock perms, classification / active discovery / DLP / parser fallback / enricher quietly stop producing output — install still succeeds, regex/allowlist rules still match. See [Bedrock-dependent features](#bedrock-dependent-features) below for the per-feature breakdown and how to tell IAM-missing from model-access-missing apart.
+- Don't patch the built-in `general-purpose` NodePool to add arm64. Auto Mode reconciles it back to default. Use the dedicated `oryo-arm64` NodePool from [docs/prereqs.md §4](prereqs.md).
+- Don't install the standalone `aws-load-balancer-controller`. Auto Mode ships its own ALB controller. The standalone one crashes with `ec2imds GetMetadata` timeouts and fights it for ingress reconciliation. The chart's `IngressClass` already routes to the built-in controller.
+- The `group.name` ingress annotation doesn't actually merge ALBs. The chart sets `alb.ingress.kubernetes.io/group.name: oryo` to put all 3 ingresses on one ALB, but Auto Mode currently provisions one per ingress. It works, just at slightly higher cost.
+- A `dbInit` hook failure rolls back the install, and the Job is cleaned up automatically, so the logs are gone afterward. Either stream `kubectl -n <NS> logs job/oryo-oryo-platform-db-init -f` during the install, or use `--no-hooks` to debug the rest separately and run dbInit by hand.
+- Bedrock failures degrade silently. Without model access or IRSA Bedrock permissions, classification, active discovery, DLP, parser fallback, and the enricher quietly stop producing output. The install still succeeds, and regex/allowlist rules still match. See [Bedrock-dependent features](#bedrock-dependent-features) for the per-feature breakdown and how to tell a missing IAM grant from missing model access.
 
 ### Bedrock-dependent features
 
-Several gateway/worker code paths call Bedrock (Claude 3 Haiku for classification + discovery + DLP + parser fallback, Nova Micro for enrichment). The platform is built to **degrade silently** if Bedrock is unreachable — the install succeeds, the proxy intercepts, regex/allowlist policy rules still match. What stops working:
+Several gateway and worker code paths call Bedrock (Claude 3 Haiku for classification, discovery, DLP, and parser fallback; Nova Micro for enrichment). The platform is built to degrade silently if Bedrock is unreachable: the install succeeds, the proxy intercepts, and regex/allowlist policy rules still match. What stops working:
 
 | Surface | When Bedrock is missing |
 |---|---|
-| **DLP policy function** | Returns `undefined` with a warning log. Rules of type "DLP scan" never trigger; other policy rules unaffected. |
-| **Gateway active discovery** (`POST /active-discovery`, `/inference-discovery`) | 5xx with `AccessDeniedException`. New LLM endpoints don't get auto-detected; you can still add interception rules by hand. |
-| **Worker classification jobs** (`tool-classification`, `tool-use-classification`, prompt classification) | Throws inside `pMap`; tool uses + prompts stay untagged. Dashboard shows raw conversations with no category badges. |
-| **Parser fallback** | Deterministic parsing still works; when it can't, the prompt renders raw instead of structured. |
-| **Enricher** | Enrichment metadata absent. |
+| DLP policy function | Returns `undefined` with a warning log. "DLP scan" rules never trigger; other policy rules are unaffected. |
+| Gateway active discovery (`POST /active-discovery`, `/inference-discovery`) | Returns 5xx with `AccessDeniedException`. New LLM endpoints aren't auto-detected; you can still add interception rules by hand. |
+| Worker classification jobs (`tool-classification`, `tool-use-classification`, prompt classification) | Throws inside `pMap`; tool uses and prompts stay untagged. The dashboard shows raw conversations with no category badges. |
+| Parser fallback | Deterministic parsing still works; when it can't parse, the prompt renders raw instead of structured. |
+| Enricher | Enrichment metadata is absent. |
 
-Two failure modes look the same in the dashboard (no tags, no discovery) but have different causes:
-- **IAM**: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel` → fix the IRSA policy ([docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa--lets-the-pods-reach-s3--bedrock)).
-- **Model access**: same call returns `AccessDeniedException: You don't have access to the model with the specified model ID` → enable model access in the Bedrock console ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
+Two failure modes show up the same way in the dashboard — tags and discovery both go missing — but they have different causes:
+- IAM: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel`. Fix the IRSA policy ([docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa-for-s3--bedrock)).
+- Model access: the same call returns `AccessDeniedException: You don't have access to the model with the specified model ID`. Enable model access in the Bedrock console ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
 
 Quick check from inside the cluster:
 
