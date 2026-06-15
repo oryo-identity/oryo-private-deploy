@@ -101,7 +101,7 @@ helm install oryo ./oryo-platform \
   --namespace oryo --create-namespace \
   --values oryo-platform/values.yaml \
   --values oryo-platform/values.custom.yaml \
-  --wait --timeout 10m
+  --atomic --cleanup-on-fail --wait --timeout 10m
 
 # 5. Point DNS at the ALBs
 kubectl -n oryo get ingress

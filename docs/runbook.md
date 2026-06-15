@@ -28,7 +28,7 @@ These tools need to be installed locally to successfully go through the full flo
 
 - `aws` CLI (v2) — auth + every AWS-side operation
 - `kubectl` — talk to your EKS cluster
-- `helm` (v3) — install + upgrade the chart
+- `helm` (v3, or v4 — but **not 4.2.1**, which can hang upgrades for several minutes per hook on resource cleanup; pin to 4.2.0 or a later fixed release) — install + upgrade the chart
 - `eksctl` — only needed for the eksctl-path IRSA setup in [docs/prereqs.md §2b](prereqs.md) (skip if you create the role manually)
 - `jq` — used by `verify.sh` to inspect Auto Mode NodePools during preflight
 - `openssl` — used by `verify.sh --bootstrap-secrets` to generate session + role passwords (system default works on macOS/Linux)
@@ -112,7 +112,7 @@ helm install oryo ./oryo-platform \
   --namespace <NAMESPACE> --create-namespace \
   --values oryo-platform/values.yaml \
   --values oryo-platform/values.custom.yaml \
-  --wait --timeout 10m
+  --atomic --cleanup-on-fail --wait --timeout 10m
 ```
 
 > If you bootstrapped secrets with `verify.sh --bootstrap-secrets`, the namespace already exists — `--create-namespace` is a harmless no-op.
@@ -244,12 +244,18 @@ fix can ship without a platform change, so compare both when reporting an issue.
 helm upgrade oryo ./oryo-platform \
   --namespace <NAMESPACE> \
   --values values.yaml \
-  --wait --timeout 10m
+  --atomic --cleanup-on-fail --wait --timeout 10m
 ```
 
 The `dbInit` hook re-runs on every upgrade (idempotent — schema additions are `IF NOT EXISTS`).
 
 To skip the dbInit hook on upgrades (faster), set `dbInit.enabled: false` in `values.yaml` before running `helm upgrade`.
+
+`--atomic` rolls the release back automatically if the upgrade fails or times out, so a bad run can't leave it half-applied. If an upgrade is interrupted before it finishes (e.g. the process is killed mid-run), the release can be left in a `pending-upgrade` state that blocks the next upgrade with `another operation (install/upgrade/rollback) is in progress`. Clear it and retry:
+
+```bash
+helm rollback oryo --namespace <NAMESPACE>
+```
 
 ---
 
