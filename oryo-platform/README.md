@@ -1,12 +1,12 @@
 # oryo-platform
 
-Helm chart for the Oryo Platform — deploys the dashboard, gateway, API, and
-workers services to a Kubernetes cluster (EKS Auto Mode, arm64), with
-TLS-terminated ALB ingress and a customer-owned Postgres backend.
+Helm chart for the Oryo Platform. It deploys the dashboard, gateway, API, and
+workers to a Kubernetes cluster (EKS Auto Mode, arm64), with TLS-terminated ALB
+ingress and a customer-owned Postgres backend.
 
-This chart is one piece of the [oryo-private-deploy](../README.md) kit. Read
-the [runbook](../docs/runbook.md) for the end-to-end install and the
-[prerequisites](../docs/prereqs.md) for the AWS-side setup that must exist
+This chart is one piece of the [oryo-private-deploy](../README.md) kit. Read the
+[runbook](../docs/runbook.md) for the end-to-end install and the
+[prerequisites](../docs/prereqs.md) for the AWS-side setup that has to exist
 first.
 
 ## Install
@@ -20,17 +20,17 @@ helm install oryo ./oryo-platform \
   --wait --timeout 10m
 ```
 
-The chart **creates nothing in AWS**. It assumes the S3 bucket, IRSA role,
-Bedrock model access, subnet tags, arm64 NodePool, RDS database, and ACM cert
-already exist — `../scripts/verify.sh` verifies them and the
+The chart creates nothing in AWS. It assumes the S3 bucket, IRSA role, Bedrock
+model access, subnet tags, arm64 NodePool, RDS database, and ACM cert already
+exist. `../scripts/verify.sh` checks them, and the
 [prerequisites doc](../docs/prereqs.md) explains how to provision them.
 
 ## Parameters
 
 Full defaults and inline docs live in [`values.yaml`](values.yaml). Every
-must-set value is flagged `# TODO` — put overrides in `values.custom.yaml`
-(gitignored) and layer it as the second `-f` to `helm install`. The values
-you must provide:
+must-set value is flagged `# TODO`. Put overrides in `values.custom.yaml`
+(gitignored) and layer it as the second `-f` to `helm install`. The values you
+must provide:
 
 | Key | Description | Source |
 |---|---|---|
@@ -43,12 +43,12 @@ you must provide:
 | ACM cert ARN (ingress annotation) | wildcard `*.<DOMAIN>` cert | [prereqs §7](../docs/prereqs.md) |
 
 Values with safe defaults you usually leave alone: `global.env.ENV_NAME`
-(`stage` — the private-deploy value), all `resources`, `replicas`,
-`autoscaling`, `affinity`, `tolerations`, `imageTag`.
+(`stage`, the private-deploy value), and all `resources`, `replicas`,
+`autoscaling`, `affinity`, `tolerations`, and `imageTag`.
 
 Secrets (`oryo-session-secret`, `oryo-db-*`, `oryo-resend-api-key`) are
-referenced by the chart but created out-of-band — by `verify.sh
---bootstrap-secrets` or your own secrets manager. See the
+referenced by the chart but created out-of-band, either by `verify.sh
+--bootstrap-secrets` or by your own secrets manager. See the
 [runbook](../docs/runbook.md) secrets section.
 
 ## See also

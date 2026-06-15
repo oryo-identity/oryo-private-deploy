@@ -1,8 +1,8 @@
-# Prerequisites — what needs to exist in your AWS account
+# Prerequisites
 
-Oryo's install kit **creates nothing in your AWS account**. The resources below need to exist before `helm install` — `verify.sh` then verifies them and prints any gaps.
+Oryo's install kit creates nothing in your AWS account. The resources below need to exist before `helm install`. `verify.sh` then checks them and reports any gaps.
 
-> **NOTE:** This doc is a **helpful guide to get a green-field account to a base state**, with copy-pasteable CLI snippets that make sane choices for a first install. Most teams already run their own VPC / IRSA / RDS conventions and will satisfy these requirements through their existing IaC. If that's you, treat this as context — read the checklist at each section, confirm your setup meets the constraint, and skim past the snippets.
+> Note: this doc is a guide for getting a green-field account to a working base state, with copy-pasteable CLI snippets that make reasonable choices for a first install. Most teams already run their own VPC, IRSA, and RDS conventions and will meet these requirements through their existing IaC. If that's you, treat this as reference: read the checklist at each section, confirm your setup meets the constraint, and skip the snippets.
 
 Throughout, substitute:
 - `<ACCOUNT_ID>` — your AWS account ID
@@ -12,32 +12,32 @@ Throughout, substitute:
 - `<BUCKET_NAME>` — a globally-unique S3 bucket name you pick
 - `<DOMAIN>` — the domain you'll serve Oryo from (e.g. `oryo.example.com`)
 
-The ServiceAccount the pods run as is `oryo-platform` in `<NAMESPACE>` (set by `serviceAccount.name` in `values.yaml` — keep it as `oryo-platform` so the IAM trust policy below matches).
+The pods run as the `oryo-platform` ServiceAccount in `<NAMESPACE>` (set by `serviceAccount.name` in `values.yaml`). Keep it as `oryo-platform` so the IAM trust policy below matches.
 
 ---
 
 ## 1. S3 bucket (object storage)
 
-A private bucket in your account + region. The workers/api store files here.
+A private bucket in your account and region. The workers and api store files here.
 
 ```bash
 aws s3api create-bucket --bucket <BUCKET_NAME> --region <REGION> \
   --create-bucket-configuration LocationConstraint=<REGION>
 ```
 
-> **NOTE:** `us-east-1` is a historical S3 quirk — omit `--create-bucket-configuration` entirely for that region; the CLI rejects `LocationConstraint=us-east-1`.
+> Note: `us-east-1` is a historical S3 quirk. Omit `--create-bucket-configuration` entirely for that region. The CLI rejects `LocationConstraint=us-east-1`.
 
 Put the name in `values.yaml` → `global.env.DEFAULT_BUCKET`.
 
 ---
 
-## 2. IAM policy + role (IRSA — lets the pods reach S3 + Bedrock)
+## 2. IAM policy + role (IRSA for S3 + Bedrock)
 
-The pods assume an IAM role via IRSA. You create the **role**; the Helm chart creates the matching k8s ServiceAccount and annotates it with the role ARN.
+The pods assume an IAM role via IRSA. You create the role. The Helm chart creates the matching k8s ServiceAccount and annotates it with the role ARN.
 
-### 2a. Permission policy — S3 + Bedrock, scoped
+### 2a. Permission policy (S3 + Bedrock)
 
-Two statements: one for the object-storage bucket, one for the Bedrock foundation models the agents call. The Bedrock action covers the `Converse` API used by every agent (`anthropic.claude-3-haiku-20240307-v1:0` and `amazon.nova-micro-v1:0`). See §5 for enabling **model access** in your account — that's separate from the IAM grant.
+Two statements: one for the object-storage bucket, one for the Bedrock foundation models the agents call. The Bedrock action covers the `Converse` API used by every agent (`anthropic.claude-3-haiku-20240307-v1:0` and `amazon.nova-micro-v1:0`). See §5 for enabling model access in your account, which is separate from the IAM grant.
 
 ```bash
 cat > /tmp/oryo-workload-policy.json <<EOF
@@ -69,15 +69,15 @@ aws iam create-policy \
   --policy-document file:///tmp/oryo-workload-policy.json
 ```
 
-This prints the policy ARN (`arn:aws:iam::<ACCOUNT_ID>:policy/OryoWorkloadPolicy`); you'll plug it into §2b.
+This prints the policy ARN (`arn:aws:iam::<ACCOUNT_ID>:policy/OryoWorkloadPolicy`). You'll plug it into §2b.
 
 ### 2b. IAM role with IRSA trust policy
 
-The role needs a trust policy binding it to the `oryo-platform` ServiceAccount via your cluster's OIDC provider. Two paths — **pick one**:
+The role needs a trust policy binding it to the `oryo-platform` ServiceAccount via your cluster's OIDC provider. There are two paths. Pick one.
 
-#### Option A — eksctl (recommended, one command)
+#### Option A: eksctl (recommended)
 
-`eksctl` looks up your cluster's OIDC issuer, builds the trust policy below for you, creates the role, and attaches the policy — in a single command:
+`eksctl` looks up your cluster's OIDC issuer, builds the trust policy for you, creates the role, and attaches the policy, all in one command:
 
 ```bash
 eksctl create iamserviceaccount \
@@ -88,7 +88,7 @@ eksctl create iamserviceaccount \
   --approve
 ```
 
-> **NOTE:** `--role-only` is important — the Helm chart creates the ServiceAccount itself. If eksctl creates one too, the trust policy ends up bound to the wrong SA name and IRSA breaks silently.
+> Note: `--role-only` matters. The Helm chart creates the ServiceAccount itself. If eksctl creates one too, the trust policy ends up bound to the wrong SA name and IRSA breaks silently.
 
 If your cluster doesn't have an IAM OIDC provider yet, `eksctl` will tell you. To create one:
 
@@ -96,7 +96,7 @@ If your cluster doesn't have an IAM OIDC provider yet, `eksctl` will tell you. T
 eksctl utils associate-iam-oidc-provider --cluster <CLUSTER_NAME> --region <REGION> --approve
 ```
 
-#### Option B — manual (no eksctl)
+#### Option B: manual (no eksctl)
 
 Get your cluster's OIDC issuer (drop the `https://`):
 
@@ -141,7 +141,7 @@ Put the role ARN in `values.yaml` → `serviceAccount.annotations.eks.amazonaws.
 
 ## 3. Tag public subnets for ALB discovery
 
-EKS Auto Mode's load-balancer controller finds where to place ALBs by scanning the cluster's VPC for public subnets tagged `kubernetes.io/role/elb=1`. Without the tag, ingresses never get an address.
+EKS Auto Mode's load-balancer controller decides where to place ALBs by scanning the cluster's VPC for public subnets tagged `kubernetes.io/role/elb=1`. Without the tag, ingresses never get an address.
 
 ```bash
 VPC_ID=$(aws eks describe-cluster --name <CLUSTER_NAME> --region <REGION> \
@@ -154,9 +154,9 @@ aws ec2 describe-subnets --region <REGION> \
     --tags Key=kubernetes.io/role/elb,Value=1 --resources
 ```
 
-> **NOTE:** `xargs` splits on any whitespace (tabs included), and `--resources` accepts multiple subnet IDs — so this is one `create-tags` call. Works in bash and zsh.
+> Note: `xargs` splits on any whitespace (tabs included), and `--resources` accepts multiple subnet IDs, so this is a single `create-tags` call. It works in bash and zsh.
 
-> **NOTE:** Internal-only ALBs (no public traffic) use `kubernetes.io/role/internal-elb=1` on private subnets — out of scope here.
+> Note: internal-only ALBs (no public traffic) use `kubernetes.io/role/internal-elb=1` on private subnets. Out of scope here.
 
 ---
 
@@ -164,7 +164,7 @@ aws ec2 describe-subnets --region <REGION> \
 
 Oryo's images are arm64 (Graviton). EKS Auto Mode's default `general-purpose` NodePool only provisions amd64, so pods stay `Pending` until arm64 nodes are available.
 
-**Create a dedicated arm64 NodePool** — do *not* edit `general-purpose`. Auto Mode reconciles its built-in NodePools back to defaults, so a patch to `general-purpose` silently reverts (and your pods go `Pending` again later). A separate NodePool is durable:
+Create a dedicated arm64 NodePool. Don't edit `general-purpose`. Auto Mode reconciles its built-in NodePools back to defaults, so a patch to `general-purpose` silently reverts (and your pods go `Pending` again later). A separate NodePool sticks:
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -194,26 +194,26 @@ spec:
 EOF
 ```
 
-> **NOTE:** Using classic managed node groups instead of Auto Mode? Ensure at least one arm64 node group exists; you don't need a NodePool object.
+> Note: using classic managed node groups instead of Auto Mode? Make sure at least one arm64 node group exists. You don't need a NodePool object.
 
 ---
 
 ## 5. Bedrock model access (per-region opt-in)
 
-Bedrock foundation models are **opt-in per account, per region** — separate from the IAM grant in §2. Without it, agent calls fail with `AccessDeniedException` even when IAM is correct.
+Bedrock foundation models are opt-in per account, per region, separate from the IAM grant in §2. Without it, agent calls fail with `AccessDeniedException` even when IAM is correct.
 
-Several Oryo features call Bedrock from the gateway/workers (auto-classification of prompts and tool uses, active discovery of new LLM endpoints, the DLP policy function, the parser fallback, enrichment). They **degrade silently** if model access is missing — installs still succeed, the proxy still intercepts and policies still match on regex/allowlist rules, but auto-tagging, discovery, and the DLP policy stop working. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features) for the per-feature breakdown.
+Several Oryo features call Bedrock from the gateway and workers (auto-classification of prompts and tool uses, active discovery of new LLM endpoints, the DLP policy function, the parser fallback, enrichment). They degrade silently if model access is missing: installs still succeed, the proxy still intercepts, and policies still match on regex/allowlist rules, but auto-tagging, discovery, and the DLP policy stop working. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features) for the per-feature breakdown.
 
-**Models to enable** (both must be on in `<REGION>`):
+Models to enable (both must be on in `<REGION>`):
 
 | Model | ID |
 |---|---|
 | Anthropic Claude 3 Haiku | `anthropic.claude-3-haiku-20240307-v1:0` |
 | Amazon Nova Micro | `amazon.nova-micro-v1:0` |
 
-**Enable in the console:** Bedrock → **Model access** in `<REGION>` → request the two models above. Anthropic models require a one-time use-case form (usually approved within minutes); Amazon models are instant.
+Enable in the console: Bedrock → Model access in `<REGION>` → request the two models above. Anthropic models require a one-time use-case form (usually approved within minutes). Amazon models are instant.
 
-**Confirm afterwards:**
+Confirm afterwards:
 
 ```bash
 aws bedrock list-foundation-models --region <REGION> \
@@ -221,17 +221,17 @@ aws bedrock list-foundation-models --region <REGION> \
   --output table
 ```
 
-Both rows should be `ACTIVE`. If a row is missing, the model isn't available in `<REGION>` — pick a Bedrock-supported region or set `global.env.AWS_REGION` in `values.yaml` to point the agents at a region that has them (IRSA still uses the cluster's STS endpoint; only the Bedrock SDK target moves).
+Both rows should be `ACTIVE`. If a row is missing, the model isn't available in `<REGION>`. Pick a Bedrock-supported region, or set `global.env.AWS_REGION` in `values.yaml` to point the agents at a region that has them (IRSA still uses the cluster's STS endpoint; only the Bedrock SDK target moves).
 
-> **NOTE:** `list-foundation-models` shows availability, not your account's opt-in state. The truth check is a real `bedrock-runtime invoke-model` call — if model access is missing you'll get `AccessDeniedException: You don't have access to the model with the specified model ID`. `verify.sh` runs a smoke call against Haiku 3 and reports the result.
+> Note: `list-foundation-models` shows which models exist in the region rather than whether your account has opted in. The real check is a `bedrock-runtime invoke-model` call: if model access is missing you'll get `AccessDeniedException: You don't have access to the model with the specified model ID`. `verify.sh` runs a smoke call against Haiku 3 and reports the result.
 
 ---
 
 ## 6. Postgres database
 
 Your RDS instance must:
-- Be reachable from the cluster's VPC on port 5432 (security group allows the cluster).
-- Have the target database present — the default `postgres` database works; or create your own and name it in `values.yaml` → `global.db.database`.
+- Be reachable from the cluster's VPC on port 5432 (the security group allows the cluster).
+- Have the target database present. The default `postgres` database works, or create your own and set it in `values.yaml` → `global.db.database`.
 
 You provide the endpoint (`global.db.host`) and master credentials (in `.env`, used once by the dbInit hook).
 
@@ -239,12 +239,12 @@ You provide the endpoint (`global.db.host`) and master credentials (in `.env`, u
 
 ## 7. ACM certificate + Route 53 hosted zone
 
-Each Oryo service is served over HTTPS at its own subdomain (`app.<DOMAIN>`, `api.<DOMAIN>`, `gateway.<DOMAIN>`). The ALBs terminate TLS using a **wildcard ACM certificate** you provide.
+Each Oryo service is served over HTTPS at its own subdomain (`app.<DOMAIN>`, `api.<DOMAIN>`, `gateway.<DOMAIN>`). The ALBs terminate TLS using a wildcard ACM certificate you provide.
 
-**Requirements:**
+Requirements:
 
-- A **Route 53 hosted zone** for `<DOMAIN>` in the same AWS account as the cluster (so the validation CNAME and subdomain records can be managed in-place).
-- A **wildcard ACM certificate for `*.<DOMAIN>`** in the **same region as the cluster** (ALBs can only use certs from their own region — unlike CloudFront, which requires `us-east-1`).
+- A Route 53 hosted zone for `<DOMAIN>` in the same AWS account as the cluster, so the validation CNAME and subdomain records can be managed in place.
+- A wildcard ACM certificate for `*.<DOMAIN>` in the same region as the cluster. ALBs can only use certs from their own region, unlike CloudFront, which requires `us-east-1`.
 
 ```bash
 aws acm request-certificate \
@@ -253,10 +253,10 @@ aws acm request-certificate \
   --region <REGION>
 ```
 
-Then add the DNS-validation CNAME ACM tells you about to your Route 53 zone — ACM uses it to verify domain ownership and to keep the cert renewable. The cert needs to reach status `ISSUED` (typically within a few minutes of the CNAME being live) before you install.
+Then add the DNS-validation CNAME that ACM gives you to your Route 53 zone. ACM uses it to verify domain ownership and to keep the cert renewable. The cert needs to reach status `ISSUED` (usually within a few minutes of the CNAME going live) before you install.
 
-> **NOTE:** Once the cert is `ISSUED`, copy the cert ARN into `values.yaml` under each ingress's `alb.ingress.kubernetes.io/certificate-arn` annotation. After `helm install`, you'll create CNAMEs in this same hosted zone pointing `app.<DOMAIN>` / `api.<DOMAIN>` / `gateway.<DOMAIN>` at the ALB hostnames — see [runbook.md §5](runbook.md#5-point-dns-at-the-albs).
+> Note: once the cert is `ISSUED`, copy the cert ARN into `values.yaml` under each ingress's `alb.ingress.kubernetes.io/certificate-arn` annotation. After `helm install`, you'll create CNAMEs in this same hosted zone pointing `app.<DOMAIN>` / `api.<DOMAIN>` / `gateway.<DOMAIN>` at the ALB hostnames. See [runbook.md §5](runbook.md#5-point-dns-at-the-albs).
 
 ---
 
-When all of the above exist, run `./scripts/verify.sh` — it verifies each one and tells you exactly what's missing if anything isn't ready.
+When all of the above exist, run `./scripts/verify.sh`. It checks each one and tells you what's missing if anything isn't ready.
