@@ -5,7 +5,7 @@ description: |
   services to a Kubernetes cluster.
 type: application
 # Chart SemVer; bump each PR (CI-enforced).
-version: 0.1.3
+version: 0.1.4
 # Platform version, stamped at release.
 appVersion: '0.1.0'
 kubeVersion: '>=1.27.0-0'
