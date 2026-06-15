@@ -1,12 +1,12 @@
-# Oryo — Private Deployment
+# Oryo Private Deployment
 
-Deploy Oryo in your own AWS account + EKS cluster.
+Deploy Oryo in your own AWS account and EKS cluster.
 
-> **Status:** early — the install path works end-to-end but is still being hardened against multiple customer environments. Expect refinements until v1.0.
+> Status: early. The install path works end-to-end but is still being hardened across different customer environments. Expect changes before v1.0.
 
 ## What you get
 
-A Helm chart ([`oryo-platform/`](oryo-platform/)) that runs the Oryo platform (dashboard, gateway, API, workers) inside your EKS cluster, pulling container images from Oryo's distribution registry, with TLS-terminated ingress and a Postgres backend you own.
+A Helm chart ([`oryo-platform/`](oryo-platform/)) that runs the Oryo platform (dashboard, gateway, API, workers) inside your EKS cluster. It pulls container images from Oryo's distribution registry and runs against TLS-terminated ingress and a Postgres backend you own.
 
 ## Repository layout
 
@@ -73,13 +73,13 @@ flowchart LR
 - Postgres database (RDS recommended)
 - A domain you control, with a Route 53 hosted zone in the same AWS account
 - An ACM certificate for `*.<your-domain>` in the same region as the cluster (terminates HTTPS at the ALBs)
-- The AWS-side [docs/prereqs.md](docs/prereqs.md):
+- The AWS-side resources in [docs/prereqs.md](docs/prereqs.md):
     - S3 bucket
     - IAM policy + IRSA role (S3 + Bedrock)
     - public-subnet tags
     - dedicated arm64 NodePool
-    - Bedrock model access (Claude 3 Haiku + Nova Micro) 
-- Make sure that Oryo has added your AWS account ID to its ECR repository policies. Contact your Oryo rep if your AWS account has not been provisioned access to our ECR images.
+    - Bedrock model access (Claude 3 Haiku + Nova Micro)
+- Oryo's account ID grant to its ECR repository policies. Contact your Oryo rep if your AWS account hasn't been provisioned access to the ECR images yet.
 
 ## Quick start
 
@@ -87,7 +87,7 @@ flowchart LR
 # 1. Provision the prerequisites in your AWS account per docs/prereqs.md
 #    (or have Oryo provision them on your behalf).
 
-# 2. Preflight — verifies the prereqs and (with the flag) creates the
+# 2. Preflight: verify the prereqs and (with the flag) create the
 #    5 required k8s secrets.
 cp .env.example .env
 $EDITOR .env
@@ -109,22 +109,6 @@ kubectl -n oryo get ingress
 ```
 
 See [docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
-
-## What `verify.sh` does
-
-It's a **preflight verifier** — by default it creates nothing in your AWS account, only checks. Run it before `helm install` against the `.env` you filled in.
-
-Checks:
-
-- Your `aws` profile is in the expected account, and `kubectl` is pointed at the right cluster
-- The S3 object-storage bucket exists
-- The IRSA workload role exists
-- Bedrock model access (Claude 3 Haiku + Nova Micro) is enabled in your region
-- Public subnets are tagged `kubernetes.io/role/elb=1`
-- A schedulable arm64 NodePool exists (Auto Mode `general-purpose` is amd64-only by default — see prereqs.md §4)
-- The 5 required k8s secrets exist in the target namespace
-
-Each `✗` points at the relevant section of [docs/prereqs.md](docs/prereqs.md).
 
 ## License
 
