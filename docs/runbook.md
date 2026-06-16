@@ -28,7 +28,7 @@ You need these installed locally to follow the runbook:
 
 - `aws` CLI (v2) — authentication and every AWS-side operation
 - `kubectl` — to talk to your EKS cluster
-- `helm` (v3, or v4 but not 4.2.1, which can hang upgrades for several minutes per hook while cleaning up resources, so pin to 4.2.0 or a later fixed release) — to install and upgrade the chart
+- `helm` `>=4.0.0 <4.2.1` — to install and upgrade the chart. 4.2.1 can hang upgrades for several minutes per hook while cleaning up resources.
 - `eksctl` — only for the eksctl IRSA path in [docs/prereqs.md §2b](prereqs.md) (skip it if you create the role manually)
 - `jq` — used by `verify.sh` to inspect Auto Mode NodePools during preflight
 - `openssl` — used by `verify.sh --bootstrap-secrets` to generate session and role passwords (the system default works on macOS and Linux)
@@ -89,13 +89,19 @@ The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db
 
 ## 3. Fill in `values.custom.yaml`
 
-The chart's `oryo-platform/values.yaml` ships with working defaults and `# TODO` markers for the values you need to supply. Put your overrides in `oryo-platform/values.custom.yaml` (gitignored) and pass both files to helm:
+The published chart already pins the registry, image tags, and sensor range. You just add your own overrides in a `values.custom.yaml` (gitignored). Keep this file outside the chart so it carries over on upgrades.
 
 ```bash
-$EDITOR oryo-platform/values.custom.yaml
+$EDITOR values.custom.yaml
 ```
 
-Set the values flagged `# TODO` in `oryo-platform/values.yaml`:
+To see the keys and their defaults, dump the published chart's values:
+
+```bash
+helm show values oci://<registry-host>/charts/oryo-platform --version <version>
+```
+
+Override at least these:
 - `global.env.DOMAIN`, `APP_BASE_URL`, `API_BASE_URL` — your domain.
 - `global.env.DEFAULT_BUCKET` — the bucket name from `.env`.
 - `global.db.host` / `database` — your RDS endpoint and database name.
@@ -105,17 +111,35 @@ Set the values flagged `# TODO` in `oryo-platform/values.yaml`:
 - `dbInit.defaultTenant` — your org name and owner email.
 - `global.env.ENV_NAME` — must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
 
-## 4. `helm install`
+## 4. Install from the registry
+
+The chart is published to Oryo's registry as a versioned OCI artifact. The `oci://` URL and `<version>` are in each [GitHub Release](https://github.com/oryo-identity/oryo-private-deploy/releases), along with the image digests you can check against later.
+
+Log in to the registry first, using the credentials provided with your release:
 
 ```bash
-helm install oryo ./oryo-platform \
+helm registry login <registry-host>
+```
+
+`helm` prompts for the username and token, or you can pass them with `--username` and `--password-stdin`. Log in to the registry host only, with no `/charts/...` path. Your account needs Oryo's pull grant for the registry; if login works but the install gets a 403 on the pull, that grant is missing, so contact your Oryo rep.
+
+Then install the version you want:
+
+```bash
+helm upgrade --install oryo \
+  oci://<registry-host>/charts/oryo-platform --version <version> \
   --namespace <NAMESPACE> --create-namespace \
-  --values oryo-platform/values.yaml \
-  --values oryo-platform/values.custom.yaml \
+  -f values.custom.yaml \
   --atomic --cleanup-on-fail --wait --timeout 10m
 ```
 
-> If you bootstrapped secrets with `verify.sh --bootstrap-secrets`, the namespace already exists and `--create-namespace` is a harmless no-op.
+Use `helm upgrade --install` for both the first install and later upgrades. It installs if the release is missing and upgrades if it's there, so you won't hit `Error: ... has no deployed releases` from running `helm upgrade` too early. Pass only `-f values.custom.yaml`. The published chart already has the right registry, image tags, and sensor range, so don't re-pass a local `values.yaml`.
+
+`--atomic --cleanup-on-fail` rolls a failed install or upgrade back to the previous state instead of leaving it half-applied.
+
+If you bootstrapped secrets with `verify.sh --bootstrap-secrets`, the namespace already exists and `--create-namespace` is a no-op.
+
+If you're working on the chart itself, you can install from the local source dir instead: `helm install oryo ./oryo-platform --values oryo-platform/values.yaml -f values.custom.yaml`. That skips the published, version-pinned artifact, so it's only for chart development, not customer installs.
 
 The timeout matters. The first install on a cold cluster pulls images, provisions arm64 nodes, runs the dbInit hook, and then waits for every pod to become Ready. That can take a few minutes. 10 minutes is usually plenty. Raise it if your cluster is provisioning capacity from scratch.
 
@@ -240,16 +264,21 @@ fix can ship without a platform change, so report both when you file an issue.
 
 ## Upgrades
 
+Same command as the install, with `--version` pointed at the newer release:
+
 ```bash
-helm upgrade oryo ./oryo-platform \
+helm upgrade --install oryo \
+  oci://<registry-host>/charts/oryo-platform --version <new-version> \
   --namespace <NAMESPACE> \
-  --values values.yaml \
+  -f values.custom.yaml \
   --atomic --cleanup-on-fail --wait --timeout 10m
 ```
 
-The `dbInit` hook re-runs on every upgrade. It's idempotent (schema additions use `IF NOT EXISTS`).
+No DNS changes are needed for an upgrade. Afterwards, confirm the pods picked up the new build (see [Checking your version](#checking-your-version)).
 
-To skip the dbInit hook on upgrades (faster), set `dbInit.enabled: false` in `values.yaml` before running `helm upgrade`.
+The `dbInit` hook re-runs on every upgrade. It's idempotent, since schema additions use `IF NOT EXISTS`.
+
+To skip it on upgrades and save time, set `dbInit.enabled: false` in your `values.custom.yaml` before running the upgrade.
 
 `--atomic` rolls the release back automatically if the upgrade fails or times out, so a bad run can't leave it half-applied. If an upgrade is interrupted before it finishes (for example, the process is killed mid-run), the release can be left in a `pending-upgrade` state that blocks the next upgrade with `another operation (install/upgrade/rollback) is in progress`. Clear it and retry:
 
