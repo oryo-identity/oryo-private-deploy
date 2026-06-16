@@ -83,6 +83,12 @@ flowchart LR
 
 ## Quick start
 
+You install a published chart version from Oryo's registry. Each release has a
+GitHub Release whose notes give the `oci://` URL, `--version`, and image digests.
+Use that as the source of truth for what to install.
+
+Requires Helm `>=4.0.0 <4.2.1`.
+
 ```bash
 # 1. Provision the prerequisites in your AWS account per docs/prereqs.md
 #    (or have Oryo provision them on your behalf).
@@ -94,19 +100,25 @@ $EDITOR .env
 ./scripts/verify.sh
 
 # 3. Override what you need to (domain, cert ARN, role ARN, RDS host, etc.)
-$EDITOR oryo-platform/values.custom.yaml   # gitignored; create with just your overrides
+$EDITOR values.custom.yaml   # gitignored; create with just your overrides
 
-# 4. Install
-helm install oryo ./oryo-platform \
+# 4. Log in to the chart registry with the credentials from your release
+helm registry login <registry-host>
+
+# 5. Install the released version (registry + <version> are in the GitHub Release)
+helm upgrade --install oryo \
+  oci://<registry-host>/charts/oryo-platform --version <version> \
   --namespace oryo --create-namespace \
-  --values oryo-platform/values.yaml \
-  --values oryo-platform/values.custom.yaml \
+  -f values.custom.yaml \
   --atomic --cleanup-on-fail --wait --timeout 10m
 
-# 5. Point DNS at the ALBs
+# 6. Point DNS at the ALBs
 kubectl -n oryo get ingress
 # create CNAMEs in Route 53 for app/gateway/api → ALB hostname
 ```
+
+`helm upgrade --install` is the same command for a first install and every
+upgrade after. It installs if the release is absent and upgrades if it's there.
 
 See [docs/runbook.md](docs/runbook.md) for the long form, including troubleshooting.
 
