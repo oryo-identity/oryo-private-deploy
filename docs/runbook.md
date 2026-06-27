@@ -109,6 +109,7 @@ Override at least these:
 - `alb.ingress.kubernetes.io/certificate-arn` — the ACM cert ARN from prereqs (all 3 ingresses use it).
 - Ingress hostnames — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
 - `dbInit.defaultTenant` — your org name and owner email.
+- `global.env.SENSOR_EXECUTABLES_BUCKET` — bucket the api serves sensor installers from. Defaults to Oryo's public binaries bucket; override with a bucket your network can reach if your cluster/endpoints can't reach it (e.g. air-gapped).
 - `global.env.ENV_NAME` — must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
 
 ## 4. Install from the registry
