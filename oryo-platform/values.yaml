@@ -26,7 +26,7 @@ global:
     APP_BASE_URL: 'https://app.example.com'      # TODO
     API_BASE_URL: 'https://api.exmaple.com'      # TODO
     DEFAULT_BUCKET: 'example-bucket'             # TODO - s3 bucket
-    DEFAULT_LLM: anthropic.claude-3-haiku-20240307-v1:0 # model for classification/discovery/parser/enricher/dlp agents
+    DEFAULT_LLM: ''                              # optional agent-model override; app defaults to Haiku when empty
     LOGIN_CODE_FROM_EMAIL: noreply@oryo.io      # keep value if using an oryo provided Resend API Key
 
   # Database connection (shared across services). Per-service `db.user`/`db.role`
