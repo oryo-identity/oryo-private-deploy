@@ -191,6 +191,12 @@ if [[ "$BOOTSTRAP_SECRETS" == true ]]; then
   mk oryo-db-worker      --from-literal=password="$WORK_VAL"
   mk oryo-resend-api-key --from-literal=value="$RESEND_API_KEY"
 
+  # Optional — only when enabling the Microsoft Purview DLP integration
+  # (see docs/runbook.md "Microsoft Purview DLP integration").
+  if [[ -n "${ORYO_ENTRA_APP_SECRET:-}" ]]; then
+    mk oryo-entra-app-secret --from-literal=value="$ORYO_ENTRA_APP_SECRET"
+  fi
+
   if (( ${#GENERATED[@]} > 0 )); then
     warn "Generated random values for: ${GENERATED[*]%%=*}"
     warn "Save these to .env so the next reinstall keeps the same Postgres role passwords:"
