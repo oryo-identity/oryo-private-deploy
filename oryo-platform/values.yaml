@@ -3,13 +3,13 @@
 
 global:
   # ---------------------------------------------------------------------------
-  # IMAGES — pulled from Oryo's distribution ECR.
-  # Your AWS account must be on the allowlist; contact eng@oryo.io.
+  # IMAGES — pulled from Oryo's GHCR. Create a pull secret from your GHCR token
+  # (see docs/runbook.md) and reference it in imagePullSecrets.
   # ---------------------------------------------------------------------------
-  imageRegistry: 831622638566.dkr.ecr.us-east-1.amazonaws.com  # Oryo prod ECR
+  imageRegistry: ghcr.io/oryo-identity
   imageTag: latest # default tag applied unless service.image.tag overrides
   imagePullPolicy: IfNotPresent
-  imagePullSecrets: [] # e.g. [{ name: ecr-pull-secret }]
+  imagePullSecrets: [] # e.g. [{ name: ghcr-pull }]
 
   nodeArchitecture: arm64
 

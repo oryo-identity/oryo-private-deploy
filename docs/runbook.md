@@ -16,7 +16,7 @@ These need to exist before you start. The install kit doesn't create anything in
 | Bedrock model access | Per-region opt-in for Claude 3 Haiku and Nova Micro ([docs/prereqs.md §5](prereqs.md)). The install still succeeds without it, but auto-classification, active discovery, and the DLP policy won't work; see [Bedrock-dependent features](#bedrock-dependent-features). |
 | Postgres database | RDS recommended. Reachable from the cluster VPC on port 5432. The target database must exist (the default `postgres` works); see [docs/prereqs.md §6](prereqs.md). |
 | Domain, Route 53 zone, ACM cert | A Route 53 hosted zone for your domain in the same AWS account, and a wildcard ACM cert for `*.<your-domain>` in the cluster's region, in status `ISSUED`. See [docs/prereqs.md §7](prereqs.md). |
-| Oryo ECR pull grant | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your account hasn't been provisioned access yet. |
+| Oryo GHCR pull token | Oryo issues a read-only token for `ghcr.io/oryo-identity`. Store it as a `docker-registry` secret (`ghcr-pull`) and set `global.imagePullSecrets`. Contact your Oryo rep if you don't have one yet. |
 
 `verify.sh` checks all of the above and can optionally bootstrap the in-cluster Kubernetes secrets. `helm install` does the rest.
 
