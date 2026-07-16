@@ -24,7 +24,7 @@ global:
     ENV_NAME: stage # private-deploy chart default — `stage` is the private-deploy value (always)
     DOMAIN: 'example.com'                        # TODO
     APP_BASE_URL: 'https://app.example.com'      # TODO
-    API_BASE_URL: 'https://api.exmaple.com'      # TODO
+    API_BASE_URL: 'https://api.example.com'      # TODO
     DEFAULT_BUCKET: 'example-bucket'             # TODO - s3 bucket
     DEFAULT_LLM: '' # optional Bedrock model ID for agents; empty = claude-3-haiku. e.g. amazon.nova-micro-v1:0
     LOGIN_CODE_FROM_EMAIL: noreply@oryo.io      # keep value if using an oryo provided Resend API Key
