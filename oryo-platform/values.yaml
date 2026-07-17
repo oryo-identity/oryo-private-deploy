@@ -30,6 +30,18 @@ global:
     LOGIN_CODE_FROM_EMAIL: noreply@oryo.io      # keep value if using an oryo provided Resend API Key
     SENSOR_DOWNLOAD_BASE_URL: '' # optional: serve sensor installs from Oryo's public bucket. e.g. https://binaries-pub-prod-us-east-1-oryo.s3.amazonaws.com
 
+    # Optional cloud-partition / endpoint overrides — the app defaults to the
+    # commercial AWS and Microsoft clouds. Set only for GovCloud or sovereign
+    # deployments (docs/runbook.md "Cloud partition and endpoint overrides").
+    # Empty values are dropped from pods, so the in-app defaults apply.
+    AWS_REGION: ''               # e.g. us-gov-west-1; on EKS leave empty — IRSA injects the cluster region
+    AWS_S3_SUFFIX: ''            # S3 endpoint suffix; app default s3.amazonaws.com
+    MICROSOFT_AUTHORITY: ''      # e.g. https://login.microsoftonline.us
+    MICROSOFT_GRAPH: ''          # e.g. https://graph.microsoft.us
+    MICROSOFT_ARM: ''            # e.g. https://management.usgovcloudapi.net
+    MICROSOFT_COGNITIVE_SUFFIX: '' # e.g. cognitiveservices.azure.us
+    MICROSOFT_AI_FOUNDRY: ''     # your cloud's AI Foundry endpoint URL
+
   # Database connection (shared across services). Per-service `db.user`/`db.role`
   db:
     host: ''                                     # TODO
