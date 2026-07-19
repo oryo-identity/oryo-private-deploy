@@ -137,7 +137,7 @@ Every provider endpoint the platform calls is env-driven with a commercial-cloud
 | `MICROSOFT_ARM` | `https://management.azure.com` | Azure Government: `https://management.usgovcloudapi.net`. |
 | `MICROSOFT_COGNITIVE_SUFFIX` | `cognitiveservices.azure.com` | Azure Government: `cognitiveservices.azure.us`. |
 | `MICROSOFT_AI_FOUNDRY` | `https://ai.azure.com` | Your cloud's AI Foundry endpoint. |
-| `DEFAULT_LLM` | Claude Haiku 4.5 via the `us.` cross-region inference profile | Non-commercial partitions: the `us.` profile doesn't exist there — in GovCloud use the `us-gov.`-prefixed inference profile ID enabled in your account. |
+| `DEFAULT_LLM` | Claude 3 Haiku (`anthropic.claude-3-haiku-20240307-v1:0`) | Your partition doesn't serve that model ID — set a model or inference-profile ID enabled in your account (GovCloud profiles carry a `us-gov.` prefix). |
 
 The endpoint URLs are validated by shape only (must be well-formed URLs), so custom/sovereign clouds beyond the examples above work too.
 
@@ -407,6 +407,6 @@ Quick check from inside the cluster:
 
 ```bash
 kubectl -n <NS> exec deploy/oryo-gateway -- env | grep -E 'AWS_REGION|AWS_ROLE_ARN'
-# AWS_REGION should match a region where the platform's models (default: Claude Haiku 4.5) are enabled.
+# AWS_REGION should match a region where Haiku 3 + Nova Micro are enabled.
 # AWS_ROLE_ARN should be the IRSA role you created in prereqs §2.
 ```
