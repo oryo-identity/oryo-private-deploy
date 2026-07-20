@@ -1,0 +1,35 @@
+<svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Oryo on-prem architecture stack">
+<rect x="20" y="28" width="720" height="510" rx="6" fill="none" stroke="#8a8a8a" stroke-width="1.25" stroke-dasharray="6 4"/>
+<text x="34" y="50" font-family="Helvetica" font-size="14" font-weight="bold" fill="#1b1b1b">Host — Hyper-V server on your LAN (or a nested VM in a lab)</text>
+<rect x="470" y="60" width="250" height="44" rx="4" fill="#f4f4f2" stroke="#6f6f6f" stroke-width="1"/>
+<text x="486" y="80" font-family="Helvetica" font-size="14" font-weight="bold" fill="#1b1b1b">Network</text>
+<text x="486" y="97" font-family="Helvetica" font-size="12" fill="#555555">real LAN (NAT in a nested lab)</text>
+
+<rect x="44" y="116" width="672" height="408" rx="6" fill="none" stroke="#8a8a8a" stroke-width="1.25" stroke-dasharray="6 4"/>
+<text x="58" y="138" font-family="Helvetica" font-size="14" font-weight="bold" fill="#1b1b1b">Ubuntu VM (amd64)</text>
+
+<rect x="68" y="172" width="624" height="344" rx="5" fill="none" stroke="#8a8a8a" stroke-width="1.25" stroke-dasharray="6 4"/>
+<text x="82" y="194" font-family="Helvetica" font-size="14" font-weight="bold" fill="#1b1b1b">Kubernetes cluster (your existing cluster, or fresh k3s)</text>
+
+<rect x="92" y="216" width="576" height="52" rx="4" fill="#f4f4f2" stroke="#6f6f6f" stroke-width="1"/>
+<text x="108" y="240" font-family="Helvetica" font-size="14" font-weight="bold" fill="#1b1b1b">ingress-nginx</text>
+<text x="108" y="258" font-family="Helvetica" font-size="12" fill="#555555">TLS :443, routes by hostname (app / api / gateway)</text>
+
+<rect x="92" y="292" width="348" height="200" rx="4" fill="#e7edfb" stroke="#3a5bb0" stroke-width="1"/>
+<text x="108" y="316" font-family="Helvetica" font-size="14" font-weight="bold" fill="#1b1b1b">Oryo platform (Helm release)</text>
+<text x="108" y="346" font-family="Helvetica" font-size="12" fill="#555555">dashboard — admin UI</text>
+<text x="108" y="372" font-family="Helvetica" font-size="12" fill="#555555">api — backend</text>
+<text x="108" y="398" font-family="Helvetica" font-size="12" fill="#555555">gateway — AI traffic inspector</text>
+<text x="108" y="424" font-family="Helvetica" font-size="12" fill="#555555">workers — background jobs</text>
+<text x="108" y="458" font-family="Helvetica" font-size="12" fill="#555555">all connect to the database -></text>
+
+<rect x="460" y="292" width="208" height="200" rx="4" fill="#f4f4f2" stroke="#6f6f6f" stroke-width="1"/>
+<text x="476" y="316" font-family="Helvetica" font-size="14" font-weight="bold" fill="#1b1b1b">Postgres</text>
+<text x="476" y="344" font-family="Helvetica" font-size="12" fill="#555555">replaces AWS RDS</text>
+<text x="476" y="374" font-family="Helvetica" font-size="12" fill="#555555">- tenants</text>
+<text x="476" y="398" font-family="Helvetica" font-size="12" fill="#555555">- policies / rules</text>
+<text x="476" y="422" font-family="Helvetica" font-size="12" fill="#555555">- login_events</text>
+
+<rect x="34" y="546" width="12" height="12" rx="2" fill="#e7edfb" stroke="#3a5bb0" stroke-width="1"/>
+<text x="52" y="556" font-family="Helvetica" font-size="12" fill="#555555">blue = the Oryo platform you deploy via Helm</text>
+</svg>
