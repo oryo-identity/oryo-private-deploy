@@ -83,6 +83,18 @@ The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db
   ```
   This generates the random secrets (session and per-service DB passwords) and creates `oryo-db-admin` from your `.env`. It's safe to re-run.
 
+Either way, the namespace also needs the **GHCR pull secret** — the Oryo-issued `read:packages` token from the prerequisites, stored as a `docker-registry` secret so the pods can pull Oryo's images. `verify.sh` checks it but can't generate it:
+
+```bash
+kubectl create namespace <NAMESPACE>   # skip if it already exists
+kubectl -n <NAMESPACE> create secret docker-registry ghcr-pull \
+  --docker-server=ghcr.io \
+  --docker-username=<github-account> \
+  --docker-password=<oryo-issued-token>
+```
+
+Reference it from `values.custom.yaml` via `global.imagePullSecrets` (§3).
+
 > Database note: the target Postgres database must already exist (the default `postgres` works, or create your own and set it in `values.yaml` → `global.db.database`). dbInit creates the per-service roles and schema but doesn't create the database itself.
 
 > Email note: `RESEND_API_KEY` is required. The dashboard emails login codes through Resend, so without it users can't sign in. Use your own Resend API key (https://resend.com) or ask the Oryo team to provide one.
@@ -102,6 +114,7 @@ helm show values oci://<registry-host>/charts/oryo-platform --version <version>
 ```
 
 Override at least these:
+- `global.imagePullSecrets` — `[{ name: ghcr-pull }]`, the pull secret from §2.
 - `global.env.DOMAIN`, `APP_BASE_URL`, `API_BASE_URL` — your domain.
 - `global.env.DEFAULT_BUCKET` — the bucket name from `.env`.
 - `global.db.host` / `database` — your RDS endpoint and database name.
@@ -115,13 +128,13 @@ Override at least these:
 
 The chart is published to Oryo's registry as a versioned OCI artifact. The `oci://` URL and `<version>` are in each [GitHub Release](https://github.com/oryo-identity/oryo-private-deploy/releases), along with the image digests you can check against later.
 
-Log in to the registry first, using the credentials provided with your release:
+Log in to the registry first — same GHCR credentials as the pull secret in §2 (the GitHub account and Oryo-issued `read:packages` token):
 
 ```bash
-helm registry login <registry-host>
+helm registry login ghcr.io
 ```
 
-`helm` prompts for the username and token, or you can pass them with `--username` and `--password-stdin`. Log in to the registry host only, with no `/charts/...` path. Your account needs Oryo's pull grant for the registry; if login works but the install gets a 403 on the pull, that grant is missing, so contact your Oryo rep.
+`helm` prompts for the username and token, or you can pass them with `--username` and `--password-stdin`. Log in to the registry host only, with no `/charts/...` path. If login works but the install gets a 403 on the pull, your token lacks access to Oryo's packages — contact your Oryo rep.
 
 Then install the version you want:
 
