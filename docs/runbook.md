@@ -240,6 +240,8 @@ The best way to confirm a deployment works is to install a sensor and watch it i
 
 The detailed steps (registration token, install one-liner, CA download) are in the dashboard under Settings → Installation. This section covers the overall shape. Follow the dashboard for the exact commands.
 
+> Sensor downloads: private deployments don't have a sensor-binaries bucket of their own, so set `global.env.SENSOR_DOWNLOAD_BASE_URL` to Oryo's public binaries bucket (`https://binaries-pub-prod-us-east-1-oryo.s3.amazonaws.com`) in your `values.custom.yaml`. The install script and binaries are fetched from there; registration and sensor config still go to your `api.<DOMAIN>`. Without it, the install one-liner's `GET /install.sh|.ps1` returns 503.
+
 ### MDM fleet rollout (Intune, JAMF, etc.)
 
 1. Push the Oryo CA from Settings → Installation → Download CA as a trusted root certificate, using your MDM's certificate-distribution profile.
