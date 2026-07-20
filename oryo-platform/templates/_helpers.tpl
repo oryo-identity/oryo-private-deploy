@@ -229,6 +229,22 @@ Renders:
 {{- end -}}
 
 {{/*
+Sensor version pin for on-prem customer releases. Deliberately NOT a .Values key:
+the exact build is stamped into the committed sentinel at package time (the
+monorepo's deploy/publish-chart.sh seds this file), so a customer's
+values.custom.yaml has nothing to override. Until stamped, the sentinel still
+starts with "__" and renders nothing — templating this chart source directly
+keeps resolving the sensor version at runtime.
+*/}}
+{{- define "oryo.sensorPinnedVersion" -}}
+{{- $pinned := "__SENSOR_PINNED_VERSION__" -}}
+{{- if not (hasPrefix "__" $pinned) }}
+- name: SENSOR_PINNED_VERSION
+  value: {{ $pinned | quote }}
+{{- end }}
+{{- end -}}
+
+{{/*
 Affinity that requires nodes matching global.nodeArchitecture.
 
 Defaults to *required* so EKS Auto Mode (which optimizes for cost/availability)
