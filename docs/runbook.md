@@ -26,13 +26,13 @@ These need to exist before you start. The install kit doesn't create anything in
 
 You need these installed locally to follow the runbook:
 
-- `aws` CLI (v2) — authentication and every AWS-side operation
-- `kubectl` — to talk to your EKS cluster
-- `helm` `>=4.0.0 <4.2.1` — to install and upgrade the chart. 4.2.1 can hang upgrades for several minutes per hook while cleaning up resources.
-- `eksctl` — only for the eksctl IRSA path in [docs/prereqs.md §2b](prereqs.md) (skip it if you create the role manually)
-- `jq` — used by `verify.sh` to inspect Auto Mode NodePools during preflight
-- `openssl` — used by `verify.sh --bootstrap-secrets` to generate session and role passwords (the system default works on macOS and Linux)
-- `docker` (optional) — only for local image verification
+- `aws` CLI (v2): authentication and every AWS-side operation
+- `kubectl`: to talk to your EKS cluster
+- `helm` `>=4.0.0 <4.2.1`: to install and upgrade the chart. 4.2.1 can hang upgrades for several minutes per hook while cleaning up resources.
+- `eksctl`: only for the eksctl IRSA path in [docs/prereqs.md §2b](prereqs.md) (skip it if you create the role manually)
+- `jq`: used by `verify.sh` to inspect Auto Mode NodePools during preflight
+- `openssl`: used by `verify.sh --bootstrap-secrets` to generate session and role passwords (the system default works on macOS and Linux)
+- `docker` (optional): only for local image verification
 
 ## 1. Connect
 
@@ -67,7 +67,7 @@ cd customer
 cp .env.example .env
 $EDITOR .env          # AWS_PROFILE, AWS_REGION, ACCOUNT_ID, CLUSTER_NAME, NAMESPACE, BUCKET_NAME
 
-./scripts/verify.sh    # preflight — checks bucket, IAM role, subnet tags, arm64, secrets
+./scripts/verify.sh    # preflight: checks bucket, IAM role, subnet tags, arm64, secrets
 ```
 
 It prints a pass/fail for each check, and points you at the right section of `prereqs.md` for anything that's missing. Once everything passes, it prints the role ARN and bucket name for `values.yaml`.
@@ -114,15 +114,15 @@ helm show values oci://<registry-host>/charts/oryo-platform --version <version>
 ```
 
 Override at least these:
-- `global.imagePullSecrets` — `[{ name: ghcr-pull }]`, the pull secret from §2.
-- `global.env.DOMAIN`, `APP_BASE_URL`, `API_BASE_URL` — your domain.
-- `global.env.DEFAULT_BUCKET` — the bucket name from `.env`.
-- `global.db.host` / `database` — your RDS endpoint and database name.
-- `serviceAccount.annotations.eks.amazonaws.com/role-arn` — the IRSA role ARN from `verify.sh`.
-- `alb.ingress.kubernetes.io/certificate-arn` — the ACM cert ARN from prereqs (all 3 ingresses use it).
-- Ingress hostnames — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
-- `dbInit.defaultTenant` — your org name and owner email.
-- `global.env.ENV_NAME` — must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
+- `global.imagePullSecrets`: `[{ name: ghcr-pull }]`, the pull secret from §2.
+- `global.env.DOMAIN`, `APP_BASE_URL`, `API_BASE_URL`: your domain.
+- `global.env.DEFAULT_BUCKET`: the bucket name from `.env`.
+- `global.db.host` / `database`: your RDS endpoint and database name.
+- `serviceAccount.annotations.eks.amazonaws.com/role-arn`: the IRSA role ARN from `verify.sh`.
+- `alb.ingress.kubernetes.io/certificate-arn`: the ACM cert ARN from prereqs (all 3 ingresses use it).
+- Ingress hostnames: `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
+- `dbInit.defaultTenant`: your org name and owner email.
+- `global.env.ENV_NAME`: must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
 
 ## 4. Install from the registry
 
@@ -152,7 +152,7 @@ Use `helm upgrade --install` for both the first install and later upgrades. It i
 
 If you bootstrapped secrets with `verify.sh --bootstrap-secrets`, the namespace already exists and `--create-namespace` is a no-op.
 
-If you're working on the chart itself, you can install from the local source dir instead: `helm install oryo ./oryo-platform --values oryo-platform/values.yaml -f values.custom.yaml`. That skips the published, version-pinned artifact, so it's only for chart development, not customer installs.
+If you're working on the chart itself, you can install from the local source dir instead: `helm install oryo ./oryo-platform --values oryo-platform/values.yaml -f values.custom.yaml`. That skips the published, version-pinned artifact, so use it only for chart development, never for a customer install.
 
 The timeout matters. The first install on a cold cluster pulls images, provisions arm64 nodes, runs the dbInit hook, and then waits for every pod to become Ready. That can take a few minutes. 10 minutes is usually plenty. Raise it if your cluster is provisioning capacity from scratch.
 
@@ -382,7 +382,7 @@ Several gateway and worker code paths call Bedrock (Claude 3 Haiku for classific
 | Parser fallback | Deterministic parsing still works; when it can't parse, the prompt renders raw instead of structured. |
 | Enricher | Enrichment metadata is absent. |
 
-Two failure modes show up the same way in the dashboard — tags and discovery both go missing — but they have different causes:
+Two failure modes show up the same way in the dashboard (tags and discovery both go missing) but they have different causes:
 - IAM: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel`. Fix the IRSA policy ([docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa-for-s3--bedrock)).
 - Model access: the same call returns `AccessDeniedException: You don't have access to the model with the specified model ID`. Enable model access in the Bedrock console ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
 

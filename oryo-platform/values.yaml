@@ -21,7 +21,7 @@ global:
   podLabels: {}
 
   env:
-    ENV_NAME: stage # private-deploy chart default — `stage` is the private-deploy value (always)
+    ENV_NAME: stage # private-deploy chart default; `stage` is the private-deploy value (always)
     DOMAIN: 'example.com'                        # TODO
     APP_BASE_URL: 'https://app.example.com'      # TODO
     API_BASE_URL: 'https://api.example.com'      # TODO
@@ -49,7 +49,7 @@ sensor:
   versionRange: ''
 
 # -----------------------------------------------------------------------------
-# ServiceAccount — used by all workloads. Annotate with an IAM role ARN for
+# ServiceAccount: used by all workloads. Annotate with an IAM role ARN for
 # IRSA on EKS so pods get S3 + Bedrock access without static credentials.
 # -----------------------------------------------------------------------------
 serviceAccount:
@@ -59,7 +59,7 @@ serviceAccount:
     eks.amazonaws.com/role-arn: ''
 
 # -----------------------------------------------------------------------------
-# Database initialization — runs the @service/db-init image to create roles,
+# Database initialization: runs the @service/db-init image to create roles,
 # tables, RLS policies, and the default tenant. Idempotent.
 # -----------------------------------------------------------------------------
 dbInit:
@@ -90,7 +90,7 @@ dbInit:
     owner: '' # e.g. admin@acme.com
 
 # -----------------------------------------------------------------------------
-# Dashboard — Oryo Platform UI.
+# Dashboard: Oryo Platform UI.
 # -----------------------------------------------------------------------------
 dashboard:
   enabled: true
@@ -126,7 +126,7 @@ dashboard:
     RESEND_API_KEY: { secretName: oryo-resend-api-key, key: value }
 
 # -----------------------------------------------------------------------------
-# Gateway — AI traffic inspector
+# Gateway: AI traffic inspector
 # -----------------------------------------------------------------------------
 gateway:
   enabled: true

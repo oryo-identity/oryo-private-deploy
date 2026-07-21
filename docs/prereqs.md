@@ -5,12 +5,12 @@ Oryo's install kit creates nothing in your AWS account. The resources below need
 > Note: this doc is a guide for getting a green-field account to a working base state, with copy-pasteable CLI snippets that make reasonable choices for a first install. Most teams already run their own VPC, IRSA, and RDS conventions and will meet these requirements through their existing IaC. If that's you, treat this as reference: read the checklist at each section, confirm your setup meets the constraint, and skip the snippets.
 
 Throughout, substitute:
-- `<ACCOUNT_ID>` — your AWS account ID
-- `<REGION>` — your cluster's region (e.g. `us-east-1`)
-- `<CLUSTER_NAME>` — your EKS cluster name
-- `<NAMESPACE>` — the k8s namespace you'll install into (e.g. `oryo`)
-- `<BUCKET_NAME>` — a globally-unique S3 bucket name you pick
-- `<DOMAIN>` — the domain you'll serve Oryo from (e.g. `oryo.example.com`)
+- `<ACCOUNT_ID>`: your AWS account ID
+- `<REGION>`: your cluster's region (e.g. `us-east-1`)
+- `<CLUSTER_NAME>`: your EKS cluster name
+- `<NAMESPACE>`: the k8s namespace you'll install into (e.g. `oryo`)
+- `<BUCKET_NAME>`: a globally-unique S3 bucket name you pick
+- `<DOMAIN>`: the domain you'll serve Oryo from (e.g. `oryo.example.com`)
 
 The pods run as the `oryo-platform` ServiceAccount in `<NAMESPACE>` (set by `serviceAccount.name` in `values.yaml`). Keep it as `oryo-platform` so the IAM trust policy below matches.
 

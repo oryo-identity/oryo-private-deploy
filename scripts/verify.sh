@@ -8,7 +8,7 @@
 #
 # The one optional exception is in-cluster k8s Secrets: pass --bootstrap-secrets
 # to have this script generate + create them (convenience). Without the flag,
-# it only verifies they exist — bring your own via ESO / Vault / SealedSecrets
+# it only verifies they exist; bring your own via ESO / Vault / SealedSecrets
 # / manual kubectl if you prefer to manage secrets externally.
 #
 # Usage:
@@ -52,7 +52,7 @@ ACTUAL=$(aws sts get-caller-identity --query Account --output text 2>/dev/null |
 [[ "$ACTUAL" == "$ACCOUNT_ID" ]] && ok "AWS account $ACCOUNT_ID" \
   || bad "AWS_PROFILE=$AWS_PROFILE is in account $ACTUAL, expected $ACCOUNT_ID"
 kubectl config current-context >/dev/null 2>&1 && ok "kubectl context: $(kubectl config current-context)" \
-  || bad "kubectl not configured — run: aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION"
+  || bad "kubectl not configured; run: aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION"
 
 # ----- 1. S3 bucket --------------------------------------------------------
 
@@ -60,7 +60,7 @@ log "S3 object-storage bucket"
 if aws s3api head-bucket --bucket "$BUCKET_NAME" >/dev/null 2>&1; then
   ok "bucket $BUCKET_NAME exists"
 else
-  bad "bucket $BUCKET_NAME not found — see docs/prereqs.md §1"
+  bad "bucket $BUCKET_NAME not found; see docs/prereqs.md §1"
 fi
 
 # ----- 2. IAM role (IRSA) --------------------------------------------------
@@ -70,7 +70,7 @@ if ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --out
   ok "role $ROLE_NAME exists ($ROLE_ARN)"
 else
   ROLE_ARN=""
-  bad "role $ROLE_NAME not found — see docs/prereqs.md §2"
+  bad "role $ROLE_NAME not found; see docs/prereqs.md §2"
 fi
 
 # ----- 3. Public subnets tagged for ALB discovery --------------------------
@@ -82,7 +82,7 @@ if [[ -n "$VPC_ID" ]]; then
     --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:kubernetes.io/role/elb,Values=1" \
     --query 'Subnets[].SubnetId' --output text 2>/dev/null || echo "")
   [[ -n "$TAGGED" ]] && ok "public subnets tagged kubernetes.io/role/elb=1" \
-    || bad "no subnets tagged kubernetes.io/role/elb=1 in $VPC_ID — see docs/prereqs.md §3"
+    || bad "no subnets tagged kubernetes.io/role/elb=1 in $VPC_ID; see docs/prereqs.md §3"
 else
   bad "could not resolve cluster VPC"
 fi
@@ -92,7 +92,7 @@ fi
 log "Node architecture (arm64)"
 if kubectl get nodepool >/dev/null 2>&1; then
   # Need a NodePool that allows arm64 AND is schedulable by workloads (no
-  # NoSchedule taint — the built-in `system` pool allows arm64 but is tainted
+  # NoSchedule taint; the built-in `system` pool allows arm64 but is tainted
   # CriticalAddonsOnly, so it doesn't count). A dedicated arm64 NodePool is
   # durable; patching general-purpose isn't (Auto Mode reverts it).
   ARM_POOL=$(kubectl get nodepool -o json 2>/dev/null | jq -r '
@@ -101,9 +101,9 @@ if kubectl get nodepool >/dev/null 2>&1; then
     | select(((.spec.template.spec.taints // []) | map(select(.effect=="NoSchedule")) | length) == 0)
     | .metadata.name' | head -1)
   [[ -n "$ARM_POOL" ]] && ok "schedulable arm64 NodePool: '$ARM_POOL'" \
-    || bad "no schedulable arm64 NodePool — see docs/prereqs.md §4 (create a dedicated arm64 NodePool)"
+    || bad "no schedulable arm64 NodePool; see docs/prereqs.md §4 (create a dedicated arm64 NodePool)"
 else
-  warn "no Auto Mode NodePools (classic node groups) — ensure an arm64 node group exists"
+  warn "no Auto Mode NodePools (classic node groups); ensure an arm64 node group exists"
 fi
 
 # ----- 5. Bedrock model access ---------------------------------------------
@@ -111,7 +111,7 @@ fi
 # Two things have to be true for the agents (classification, discovery, DLP,
 # parser fallback, enricher) to work:
 #   1. The IRSA role's policy grants bedrock:InvokeModel for the two models.
-#      We can't reliably introspect that here — IAM evaluation is non-trivial
+#      We can't reliably introspect that here; IAM evaluation is non-trivial
 #      (boundaries, SCPs, inline policies). We rely on docs/prereqs.md §2a.
 #   2. Bedrock model access is enabled in this account+region.
 #
@@ -126,9 +126,9 @@ AVAILABLE=$(aws bedrock list-foundation-models --region "$AWS_REGION" \
   --output text 2>/dev/null || echo "")
 case "$AVAILABLE" in
   *"$HAIKU_ID"*"$NOVA_ID"*|*"$NOVA_ID"*"$HAIKU_ID"*) ok "$HAIKU_ID + $NOVA_ID available in $AWS_REGION" ;;
-  *"$HAIKU_ID"*) bad "$NOVA_ID not available in $AWS_REGION — pick a Bedrock-supported region or set global.env.AWS_REGION (see docs/prereqs.md §5)" ;;
-  *"$NOVA_ID"*)  bad "$HAIKU_ID not available in $AWS_REGION — pick a Bedrock-supported region or set global.env.AWS_REGION (see docs/prereqs.md §5)" ;;
-  *) bad "neither Haiku 3 nor Nova Micro listed in $AWS_REGION — see docs/prereqs.md §5" ;;
+  *"$HAIKU_ID"*) bad "$NOVA_ID not available in $AWS_REGION; pick a Bedrock-supported region or set global.env.AWS_REGION (see docs/prereqs.md §5)" ;;
+  *"$NOVA_ID"*)  bad "$HAIKU_ID not available in $AWS_REGION; pick a Bedrock-supported region or set global.env.AWS_REGION (see docs/prereqs.md §5)" ;;
+  *) bad "neither Haiku 3 nor Nova Micro listed in $AWS_REGION; see docs/prereqs.md §5" ;;
 esac
 
 # Smoke-call Haiku to confirm account opt-in. AccessDeniedException with
@@ -142,9 +142,9 @@ PROBE=$(aws bedrock-runtime converse --region "$AWS_REGION" --model-id "$HAIKU_I
 if [[ -z "$PROBE" ]]; then
   ok "Bedrock converse smoke call to Haiku 3 succeeded"
 elif echo "$PROBE" | grep -q "don't have access to the model"; then
-  bad "Bedrock model access not enabled for Haiku 3 in $AWS_REGION — enable in console (docs/prereqs.md §5)"
+  bad "Bedrock model access not enabled for Haiku 3 in $AWS_REGION; enable in console (docs/prereqs.md §5)"
 elif echo "$PROBE" | grep -q "not authorized to perform: bedrock:InvokeModel"; then
-  warn "Your CLI principal lacks bedrock:InvokeModel — pod IRSA may still be fine. Verify the IRSA role's policy includes the §2a Bedrock statement."
+  warn "Your CLI principal lacks bedrock:InvokeModel; pod IRSA may still be fine. Verify the IRSA role's policy includes the §2a Bedrock statement."
 else
   warn "Bedrock smoke call returned: $(echo "$PROBE" | head -1)"
 fi
@@ -157,13 +157,13 @@ if [[ "$BOOTSTRAP_SECRETS" == true ]]; then
   log "Bootstrapping k8s secrets (--bootstrap-secrets)"
   : "${DB_ADMIN_USER:?set in .env (needed to create oryo-db-admin)}"
   : "${DB_ADMIN_PASSWORD:?set in .env (needed to create oryo-db-admin)}"
-  : "${RESEND_API_KEY:?set in .env (needed to create oryo-resend-api-key — use your own Resend key or ask the Oryo team)}"
+  : "${RESEND_API_KEY:?set in .env (needed to create oryo-resend-api-key; use your own Resend key or ask the Oryo team)}"
   kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
   GENERATED=()
   # Use the provided value (.env override) when set; otherwise generate one
   # and remember it for the post-run hint. Setting these in .env makes
-  # subsequent reinstalls against the same Postgres idempotent — k8s Secret
+  # subsequent reinstalls against the same Postgres idempotent; k8s Secret
   # passwords stay aligned with the existing Postgres roles.
   gen() { openssl rand -base64 24 | tr -d '/+=' | head -c 32; }
   resolve() {
@@ -200,7 +200,7 @@ else
   log "K8s secrets (verify; pass --bootstrap-secrets to generate)"
   for s in "${REQUIRED_SECRETS[@]}"; do
     kubectl -n "$NAMESPACE" get secret "$s" >/dev/null 2>&1 && ok "$s exists" \
-      || bad "secret $s missing in namespace $NAMESPACE — create it, or re-run with --bootstrap-secrets"
+      || bad "secret $s missing in namespace $NAMESPACE; create it, or re-run with --bootstrap-secrets"
   done
 fi
 
@@ -229,7 +229,7 @@ Plug these into values.yaml:
   global.env.DEFAULT_BUCKET: $BUCKET_NAME
 
 Then put the rest (domain, RDS host, cert ARN, ingress hosts, default tenant)
-in oryo-platform/values.custom.yaml (gitignored — override only what differs
+in oryo-platform/values.custom.yaml (gitignored; override only what differs
 from the chart's defaults), and install:
 
   \$EDITOR oryo-platform/values.custom.yaml
