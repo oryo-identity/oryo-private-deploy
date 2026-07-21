@@ -48,11 +48,17 @@ Before you run it, confirm two things (both from the shared prerequisites above)
 
 ### Get a registration token
 
-In the dashboard, go to **Settings → Registration Tokens → Create**. The token
-(`sk_oryo_...`) is shown once, so copy it right away; it can't be retrieved afterward. One
-token can register many devices, and deleting it from that same page revokes it. On
-**Settings → Installation** you pick a token from a dropdown and the page prefills the
-commands below with it.
+Tokens are issued from the dashboard (there's no CLI or API for minting them):
+
+1. Open `https://app.<DOMAIN>` and sign in.
+2. Go to **Settings → Registration Tokens** and click **Create** (give it a name, e.g. the
+   rollout or team it's for).
+3. Copy the token (`sk_oryo_...`) immediately. It's shown **once** and can't be retrieved
+   afterward; if you lose it, create another.
+
+One token can register many devices, and deleting it from that same page revokes it. On
+**Settings → Installation** you can pick a token from a dropdown and the page prefills the
+commands below with it, so you don't have to paste it by hand.
 
 ### Install
 
