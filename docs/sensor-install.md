@@ -118,15 +118,21 @@ cd sensor-bundle && shasum -a 256 -c SHA256SUMS
 ```
 
 Copy the installer for the endpoint's platform and run it directly with the same flags the
-route 1 script passes:
+route 1 script passes. `oras pull` restores the files without the execute bit, so mark the
+installer executable first (otherwise `sudo` reports it as `command not found`, not
+`permission denied`):
 
 **macOS / Linux** (pick the matching `<platform>`):
 ```bash
+chmod +x oryo-install-<platform>
 sudo ./oryo-install-<platform> \
   --registration-token sk_oryo_... \
   --username jane.doe@company.com \
   --sensor-config-url https://api.<DOMAIN>/v1/sensor/config
 ```
+
+> macOS: if Gatekeeper blocks it (the binaries are Developer-ID signed, so this is rare via
+> an `oras` pull), clear the quarantine flag: `sudo xattr -d com.apple.quarantine oryo-install-<platform>`.
 
 **Windows** (PowerShell as Administrator):
 ```powershell
@@ -175,6 +181,7 @@ page shows the registered sensor and its version.
 
 | Symptom | Likely cause | Check |
 |---|---|---|
+| `sudo ./oryo-install-...: command not found` (file is present) | OCI pull dropped the execute bit; `sudo` reports a non-executable file as not-found | `chmod +x oryo-install-<platform>` and re-run (route 2) |
 | `GET /install.sh` returns 503 | `SENSOR_DOWNLOAD_BASE_URL` unset on the platform | Set it in `values.custom.yaml` and upgrade |
 | Installer downloads fail on the endpoint | No path to the download base URL | Use route 3, or open egress to the bucket |
 | TLS errors on watched sites after install | Tenant CA missing from the endpoint's trust store | Re-push the CA; note the CA regenerates if the platform is reinstalled |
