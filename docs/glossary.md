@@ -57,9 +57,9 @@ The CA private key stays server-side, and only leaf certs go to devices.
 
 ### GHCR pull token
 
-Oryo's container images live in Oryo's GitHub Container Registry (`ghcr.io/oryo-identity`). Your cluster pulls them with a read-only token — no AWS account or cross-account grant involved, so this works on any Kubernetes, on-prem included.
+Oryo's container images live in Oryo's GitHub Container Registry (`ghcr.io/oryo-identity`). Your cluster pulls them with a read-only token, which works on any Kubernetes, on-prem included.
 
-Oryo issues you a token with `read:packages` scoped to `oryo-identity`. You store it as a `docker-registry` secret (conventionally `ghcr-pull`) in the release namespace and reference it in `global.imagePullSecrets`. It covers `api`, `dashboard`, `gateway`, `workers`, and `db-init`.
+Oryo issues you a token with `read:packages` scoped to `oryo-identity`, along with the GitHub account name it was issued under (the docker-registry username). You store both as a `docker-registry` secret (conventionally `ghcr-pull`) in the release namespace and reference it in `global.imagePullSecrets`. The token covers `api`, `dashboard`, `gateway`, `workers`, and `db-init`.
 
 ---
 

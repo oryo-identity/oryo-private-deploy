@@ -3,7 +3,7 @@
 
 global:
   # ---------------------------------------------------------------------------
-  # IMAGES — pulled from Oryo's GHCR. Create a pull secret from your GHCR token
+  # IMAGES: pulled from Oryo's GHCR. Create a pull secret from your GHCR token
   # (see docs/runbook.md) and reference it in imagePullSecrets.
   # ---------------------------------------------------------------------------
   imageRegistry: ghcr.io/oryo-identity
