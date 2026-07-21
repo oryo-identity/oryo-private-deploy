@@ -225,7 +225,7 @@ Then open `https://app.<DOMAIN>` in a browser to reach the dashboard.
 
 The best way to confirm a deployment works is to install a sensor and watch it intercept AI traffic using the global rules seeded at install.
 
-The detailed steps (registration token, install one-liner, CA download) are in the dashboard under Settings → Installation. This section covers the overall shape. Follow the dashboard for the exact commands.
+The detailed steps (registration token, install one-liner, CA download) are in the dashboard under Settings → Installation. This section covers the overall shape. Follow the dashboard for the exact commands. For every install route, including OCI pulls and internal mirrors, see [docs/sensor-install.md](sensor-install.md).
 
 ### MDM fleet rollout (Intune, JAMF, etc.)
 

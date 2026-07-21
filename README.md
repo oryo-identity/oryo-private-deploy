@@ -17,6 +17,7 @@ oryo-private-deploy/
 ├── docs/
 │   ├── prereqs.md        ← AWS-side prerequisites you provision before install
 │   ├── runbook.md        ← end-to-end install steps + gotchas
+│   ├── sensor-install.md ← every sensor install route (one-liner, MDM, OCI, mirror)
 │   └── glossary.md       ← terms + concepts
 ├── .env.example          ← verify.sh inputs
 └── LICENSE.md
