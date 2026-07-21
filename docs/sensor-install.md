@@ -19,8 +19,9 @@ an internal mirror.
   (Settings → Installation → Download CA) and push it to endpoints as a trusted root
   certificate before installing; MDM certificate profiles are the usual vehicle.
 - **A registration token** from Settings → Registration Tokens (see [Route 1](#route-1-dashboard-one-liner-default) for how to create one).
-- **`SENSOR_DOWNLOAD_BASE_URL`** set in the platform's `values.custom.yaml` (routes 1 and 2
-  download the sensor binary through it; route 3 replaces it with your mirror). Without it the
+- **`SENSOR_DOWNLOAD_BASE_URL`** set in the platform's `values.custom.yaml`: the bucket or
+  mirror **root** (the api appends `/executables/<pinned-version>` itself). Routes 1 and 2
+  resolve the download through it; route 3 points it at your mirror. Without it the
   install-script routes return 503.
 - The endpoint must reach `api.<DOMAIN>` (registration + config) and `gateway.<DOMAIN>`
   (traffic), and resolve + trust both.
@@ -28,9 +29,11 @@ an internal mirror.
 ## Version pinning
 
 The platform serves the sensor version pinned into the chart at release time
-(`SENSOR_PINNED_VERSION`). Installs and updates use that exact build, so the version you
-stage on a mirror must match the pin. Check the chart's GitHub Release notes for the pinned
-version.
+(`SENSOR_PINNED_VERSION`); installs and updates use that exact build. The pin is the sensor
+release tag verbatim, **including its leading `v`** (e.g. `v0.5.0-pd`): the same string used
+for the git tag, the OCI tag, and the bucket's `executables/<version>/` directory. If you
+stage binaries on a mirror, reuse that exact `v`-prefixed directory name. The chart's GitHub
+Release notes list the pinned version.
 
 > **Never use `:latest`** on the sensor OCI repo or the S3 bucket paths when staging
 > binaries. The tag tracks whatever was promoted most recently and can lag or lead your
@@ -142,32 +145,49 @@ sudo ./oryo-install-<platform> \
   --sensor-config-url https://api.<DOMAIN>/v1/sensor/config
 ```
 
-The installer still downloads the sensor binary from the platform-configured
-`SENSOR_DOWNLOAD_BASE_URL`, so the endpoint needs to reach it (or use route 3).
+After registering, the installer fetches the updater and sensor binaries from the download
+URL in the platform's remote config (built from `SENSOR_DOWNLOAD_BASE_URL`). If the platform
+serves no download URL (the config logs `download_url=""`, e.g. `SENSOR_DOWNLOAD_BASE_URL` is
+unset), point the installer straight at the versioned bucket directory with
+`--download-base-url`. That value is the **full** path including `/executables/<vX.Y.Z>`:
+
+```bash
+--download-base-url https://binaries-pub-prod-us-east-1-oryo.s3.amazonaws.com/executables/<vX.Y.Z>
+```
+
+It's the same flag route 3 uses for a mirror, and it takes precedence over the remote config.
 
 ## Route 3: internal mirror (no-egress endpoints)  [pending validation]
 
 For endpoints with no path to Oryo's public bucket, host the release bundle yourself:
 
 1. Pull the bundle as in route 2.
-2. Serve it from any internal HTTPS server in the layout the installer expects:
-   `https://mirror.internal/executables/<version>/<file>` (version without the leading `v`,
-   matching the platform's pinned version).
-3. Point installs at the mirror, either per-install:
+2. Serve the files from any internal HTTPS server in the same layout as Oryo's bucket:
+   `https://mirror.internal/executables/<vX.Y.Z>/<file>`. The version directory keeps the
+   **leading `v`** (it's the sensor release tag, e.g. `executables/v0.5.0-pd/`).
+3. Point installs at the mirror. The two knobs take **different forms**, so mind the difference:
 
-   ```bash
-   sudo ./oryo-install-darwin-arm64 \
-     --registration-token sk_oryo_... \
-     --username jane.doe@company.com \
-     --sensor-config-url https://api.<DOMAIN>/v1/sensor/config \
-     --download-base-url https://mirror.internal/executables
-   ```
+   - **Per install:** `--download-base-url` is the **full versioned directory**; the installer
+     appends only the filename:
+     ```bash
+     sudo ./oryo-install-darwin-arm64 \
+       --registration-token sk_oryo_... \
+       --username jane.doe@company.com \
+       --sensor-config-url https://api.<DOMAIN>/v1/sensor/config \
+       --download-base-url https://mirror.internal/executables/<vX.Y.Z>
+     ```
+   - **Platform-wide:** `global.env.SENSOR_DOWNLOAD_BASE_URL` is the mirror **root**; the api
+     appends `/executables/<pinned-version>` itself. Set it in `values.custom.yaml` and upgrade,
+     and route 1 one-liners serve from the mirror too:
+     ```yaml
+     global:
+       env:
+         SENSOR_DOWNLOAD_BASE_URL: https://mirror.internal
+     ```
 
-   or platform-wide, by setting `global.env.SENSOR_DOWNLOAD_BASE_URL` to the mirror in
-   `values.custom.yaml` and upgrading; route 1 one-liners then also serve from the mirror.
-
-`--download-base-url` takes precedence over the URL in the remote config, so a single
-endpoint can be tested against a mirror before switching the whole platform over.
+`--download-base-url` takes precedence over the URL in the remote config, so you can point a
+single endpoint at a mirror (or straight at Oryo's bucket) before switching the whole platform
+over.
 
 ---
 
@@ -183,7 +203,9 @@ page shows the registered sensor and its version.
 |---|---|---|
 | `sudo ./oryo-install-...: command not found` (file is present) | OCI pull dropped the execute bit; `sudo` reports a non-executable file as not-found | `chmod +x oryo-install-<platform>` and re-run (route 2) |
 | `GET /install.sh` returns 503 | `SENSOR_DOWNLOAD_BASE_URL` unset on the platform | Set it in `values.custom.yaml` and upgrade |
-| Installer downloads fail on the endpoint | No path to the download base URL | Use route 3, or open egress to the bucket |
+| Install fails: "the server returned no release to download" / config logs `download_url=""` | Platform has no `SENSOR_DOWNLOAD_BASE_URL`, so it serves no download URL | Set it (`values.custom.yaml`) and upgrade, or pass `--download-base-url <base>/executables/<vX.Y.Z>` for a one-off |
+| `403`/`404` fetching a binary | The version directory isn't at that path (usually a missing or extra leading `v`) | The dir is `executables/<vX.Y.Z>/`, `v`-prefixed, matching the sensor release tag |
+| Installer downloads fail on the endpoint | No network path to the download base URL | Use route 3 (mirror), or open egress to the bucket |
 | TLS errors on watched sites after install | Tenant CA missing from the endpoint's trust store | Re-push the CA; note the CA regenerates if the platform is reinstalled |
 | Device registers but no traffic appears | Endpoint can't reach `gateway.<DOMAIN>` | DNS + cert trust for the gateway hostname |
 | Wrong sensor version installed | Mirror staged a version that differs from the platform's pin | Stage the pinned version from the release notes |
