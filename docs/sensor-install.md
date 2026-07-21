@@ -36,6 +36,16 @@ version.
 
 ## Route 1: dashboard one-liner (default)
 
+Before you run it, confirm two things (both from the shared prerequisites above):
+
+- **`global.env.SENSOR_DOWNLOAD_BASE_URL` is set** on the platform. The script downloads
+  `oryo-install` and the sensor binary through it, so if it's unset the one-liner's
+  `GET /install.sh` returns 503 and nothing installs. Set it in `values.custom.yaml` and
+  upgrade first.
+- **The tenant CA is trusted on the endpoint.** Download it from Settings → Installation →
+  Download CA and add it to the endpoint's trust store before installing, or the sensor's
+  intercepted TLS fails on watched sites afterward.
+
 The dashboard's Settings → Installation page shows the exact command for your deployment.
 The shape (macOS shown; Windows uses `install.ps1`):
 
