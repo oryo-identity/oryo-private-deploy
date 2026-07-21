@@ -14,7 +14,7 @@ environments where endpoints can't (or shouldn't) reach Oryo's public download b
 - **Tenant CA trust.** Each tenant has its own sensor root CA. Download it from the dashboard
   (Settings → Installation → Download CA) and push it to endpoints as a trusted root
   certificate before installing; MDM certificate profiles are the usual vehicle.
-- **A registration token** from Settings → Installation.
+- **A registration token** from Settings → Registration Tokens (see [Route 1](#route-1-dashboard-one-liner-default) for how to create one).
 - **`SENSOR_DOWNLOAD_BASE_URL`** set in the platform's `values.custom.yaml` (routes 1 and 2
   download through it; route 4 replaces it with your mirror). Without it the install-script
   routes return 503.
@@ -46,18 +46,42 @@ Before you run it, confirm two things (both from the shared prerequisites above)
   Download CA and add it to the endpoint's trust store before installing, or the sensor's
   intercepted TLS fails on watched sites afterward.
 
-The dashboard's Settings → Installation page shows the exact command for your deployment.
-The shape (macOS shown; Windows uses `install.ps1`):
+### Get a registration token
 
+In the dashboard, go to **Settings → Registration Tokens → Create**. The token
+(`sk_oryo_...`) is shown once, so copy it right away; it can't be retrieved afterward. One
+token can register many devices, and deleting it from that same page revokes it. On
+**Settings → Installation** you pick a token from a dropdown and the page prefills the
+commands below with it.
+
+### Install
+
+The dashboard's **Settings → Installation** page shows these per-OS commands prefilled for
+your deployment. Substitute your registration token, the username to register the device
+under, and your `api.<DOMAIN>`:
+
+**macOS** (Terminal):
 ```bash
-export REGISTRATION_TOKEN=sk_oryo_... ORYO_USERNAME=jane.doe@company.com
-curl -fsSL https://api.<DOMAIN>/install.sh | bash
+export REGISTRATION_TOKEN=sk_oryo_... ORYO_USERNAME=jane.doe@company.com API_BASE_URL=https://api.<DOMAIN>
+curl -fsSL "https://api.<DOMAIN>/install.sh" | bash
 ```
 
-What it does: your platform serves the script (rewritten to your `API_BASE_URL`), the script
-downloads `oryo-install-<platform>` from `SENSOR_DOWNLOAD_BASE_URL`, verifies it against
-`SHA256SUMS`, and runs it with your token. The installer registers the device, fetches the
-sensor config, downloads the sensor binary, and installs the service.
+**Windows** (PowerShell as Administrator):
+```powershell
+$Registration_Token="sk_oryo_..."; $Oryo_Username="jane.doe@company.com"; $env:API_BASE_URL="https://api.<DOMAIN>"
+irm https://api.<DOMAIN>/install.ps1 | iex
+```
+
+**Linux** (systemd):
+```bash
+curl -fsSL https://api.<DOMAIN>/install-linux.sh \
+  | sudo REGISTRATION_TOKEN=sk_oryo_... ORYO_USERNAME=jane.doe@company.com API_BASE_URL=https://api.<DOMAIN> bash
+```
+
+What it does: your platform serves the script (rewritten to your `API_BASE_URL`), which
+downloads the installer from `SENSOR_DOWNLOAD_BASE_URL`, verifies it against `SHA256SUMS`,
+and runs it. The installer registers the device, fetches the sensor config, downloads the
+sensor binary, and installs the service.
 
 ## Route 2: MDM fleet rollout (Intune, JAMF, etc.)
 
@@ -70,9 +94,16 @@ sensor config, downloads the sensor binary, and installs the service.
 ## Route 3: OCI pull + manual install  [pending validation]
 
 Each sensor release is published as one OCI artifact at
-`ghcr.io/oryo-identity/sensor/oryo-sensor:<vX.Y.Z>` containing all platform binaries
-(`oryo-sensor-*`, `oryo-install-*`, `oryo-updater-*`), the signed macOS `.pkg`s, and
-`SHA256SUMS`. Note the tag carries a leading `v`, unlike the chart's `sensor_version` input.
+`ghcr.io/oryo-identity/sensor/oryo-sensor:<vX.Y.Z>`. It bundles, for every supported platform
+(`darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-amd64`):
+
+- `oryo-sensor-<platform>`: the sensor itself
+- `oryo-install-<platform>`: the installer
+- `oryo-updater-<platform>`: the self-updater
+- `oryo-darwin-<arch>.pkg`: signed macOS installer packages
+- `SHA256SUMS`: checksums to verify the download
+
+Note the tag carries a leading `v`, unlike the chart's `sensor_version` input.
 
 ```bash
 # same GHCR credentials as the image pull secret (account + read:packages token)
@@ -82,14 +113,22 @@ oras pull ghcr.io/oryo-identity/sensor/oryo-sensor:<vX.Y.Z> -o ./sensor-bundle
 cd sensor-bundle && shasum -a 256 -c SHA256SUMS
 ```
 
-Copy the matching installer to the endpoint and run it directly (this is exactly what the
-route 1 script automates):
+Copy the installer for the endpoint's platform and run it directly with the same flags the
+route 1 script passes:
 
+**macOS / Linux** (pick the matching `<platform>`):
 ```bash
-# macOS arm64 example; Windows: oryo-install-windows-amd64.exe from an elevated shell
-sudo ./oryo-install-darwin-arm64 \
+sudo ./oryo-install-<platform> \
   --registration-token sk_oryo_... \
   --username jane.doe@company.com \
+  --sensor-config-url https://api.<DOMAIN>/v1/sensor/config
+```
+
+**Windows** (PowerShell as Administrator):
+```powershell
+.\oryo-install-windows-amd64.exe `
+  --registration-token sk_oryo_... `
+  --username jane.doe@company.com `
   --sensor-config-url https://api.<DOMAIN>/v1/sensor/config
 ```
 
