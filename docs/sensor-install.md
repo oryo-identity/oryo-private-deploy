@@ -1,12 +1,16 @@
 # Installing Sensors
 
-Every way to get the Oryo sensor onto endpoints, from the dashboard one-liner to a fully
-mirrored no-egress rollout. Routes 1 and 2 are the standard paths; routes 3 and 4 are for
-environments where endpoints can't (or shouldn't) reach Oryo's public download bucket.
+Ways to get the Oryo sensor onto endpoints. Route 1 (the dashboard one-liner) is the default
+path. Routes 2 and 3 are for environments where endpoints can't (or shouldn't) reach Oryo's
+public download bucket: pull the binaries yourself over OCI, and optionally serve them from
+an internal mirror.
 
-> Route status: 1 and 2 are the documented production paths. 3 and 4 are **[pending
+> Route status: route 1 is the documented production path. Routes 2 and 3 are **[pending
 > validation]**; the commands are correct per the release tooling but haven't been walked
 > end-to-end in a lab yet. Flip this note when they have.
+>
+> MDM fleet rollout (Intune, JAMF, etc.) will get its own section once it's documented as a
+> standalone flow rather than "run route 1 from a run-script policy."
 
 ## Prerequisites (all routes)
 
@@ -16,8 +20,8 @@ environments where endpoints can't (or shouldn't) reach Oryo's public download b
   certificate before installing; MDM certificate profiles are the usual vehicle.
 - **A registration token** from Settings → Registration Tokens (see [Route 1](#route-1-dashboard-one-liner-default) for how to create one).
 - **`SENSOR_DOWNLOAD_BASE_URL`** set in the platform's `values.custom.yaml` (routes 1 and 2
-  download through it; route 4 replaces it with your mirror). Without it the install-script
-  routes return 503.
+  download the sensor binary through it; route 3 replaces it with your mirror). Without it the
+  install-script routes return 503.
 - The endpoint must reach `api.<DOMAIN>` (registration + config) and `gateway.<DOMAIN>`
   (traffic), and resolve + trust both.
 
@@ -91,15 +95,7 @@ What it does:
 - The installer runs, registers the device, and fetches the sensor config.
 - It downloads the sensor binary and installs the service.
 
-## Route 2: MDM fleet rollout (Intune, JAMF, etc.)
-
-1. Push the tenant CA (Settings → Installation → Download CA) as a trusted root certificate
-   via your MDM's certificate-distribution profile.
-2. Push the route 1 one-liner via your MDM's run-script policy. On macOS the signed
-   `oryo-darwin-<arch>.pkg` from the release bundle is an alternative payload.
-3. Watch the dashboard's Devices page fill in as sensors register.
-
-## Route 3: OCI pull + manual install  [pending validation]
+## Route 2: OCI pull + manual install  [pending validation]
 
 Each sensor release is published as one OCI artifact at
 `ghcr.io/oryo-identity/sensor/oryo-sensor:<vX.Y.Z>`. It bundles, for every supported platform
@@ -141,13 +137,13 @@ sudo ./oryo-install-<platform> \
 ```
 
 The installer still downloads the sensor binary from the platform-configured
-`SENSOR_DOWNLOAD_BASE_URL`, so the endpoint needs to reach it (or use route 4).
+`SENSOR_DOWNLOAD_BASE_URL`, so the endpoint needs to reach it (or use route 3).
 
-## Route 4: internal mirror (no-egress endpoints)  [pending validation]
+## Route 3: internal mirror (no-egress endpoints)  [pending validation]
 
 For endpoints with no path to Oryo's public bucket, host the release bundle yourself:
 
-1. Pull the bundle as in route 3.
+1. Pull the bundle as in route 2.
 2. Serve it from any internal HTTPS server in the layout the installer expects:
    `https://mirror.internal/executables/<version>/<file>` (version without the leading `v`,
    matching the platform's pinned version).
@@ -180,7 +176,7 @@ page shows the registered sensor and its version.
 | Symptom | Likely cause | Check |
 |---|---|---|
 | `GET /install.sh` returns 503 | `SENSOR_DOWNLOAD_BASE_URL` unset on the platform | Set it in `values.custom.yaml` and upgrade |
-| Installer downloads fail on the endpoint | No path to the download base URL | Use route 4, or open egress to the bucket |
+| Installer downloads fail on the endpoint | No path to the download base URL | Use route 3, or open egress to the bucket |
 | TLS errors on watched sites after install | Tenant CA missing from the endpoint's trust store | Re-push the CA; note the CA regenerates if the platform is reinstalled |
 | Device registers but no traffic appears | Endpoint can't reach `gateway.<DOMAIN>` | DNS + cert trust for the gateway hostname |
 | Wrong sensor version installed | Mirror staged a version that differs from the platform's pin | Stage the pinned version from the release notes |
