@@ -1,6 +1,6 @@
 # Oryo On-Prem Deployment Runbook (experimental)
 
-> **Status: experimental.** The supported, hardened install path today is AWS/EKS — see
+> **Status: experimental.** The supported, hardened install path today is AWS/EKS; see
 > [runbook.md](runbook.md). This guide covers running Oryo on a **self-managed Kubernetes
 > cluster with no AWS**, substituting on-prem equivalents for the AWS-managed services.
 > Sections are marked **[validated]** (confirmed working in a lab) or **[planned]** (the
@@ -8,13 +8,13 @@
 
 ## Who this is for
 
-On-prem / non-AWS deployments — e.g. a Kubernetes cluster running on Hyper-V or vSphere VMs.
+On-prem / non-AWS deployments, e.g. a Kubernetes cluster running on Hyper-V or vSphere VMs.
 Tested on a single-node [k3s](https://k3s.io) cluster on an amd64 Ubuntu VM.
 
 ## Architecture (on-prem)
 
-Same shape as the AWS deployment — sensors on the endpoints report to one platform running on
-Kubernetes — with the AWS-managed services swapped for on-prem equivalents:
+Same shape as the AWS deployment (sensors on the endpoints report to one platform running on
+Kubernetes), with the AWS-managed services swapped for on-prem equivalents:
 
 | AWS (default) | On-prem substitute | Status |
 |---|---|---|
@@ -23,7 +23,7 @@ Kubernetes — with the AWS-managed services swapped for on-prem equivalents:
 | RDS Postgres | self-hosted Postgres | [validated] |
 | S3 object storage | No longer required (removed upstream) | n/a |
 | ALB + ACM + Route 53 | ingress-nginx + internal CA cert + internal DNS | [validated] (lab: self-signed + hosts file) |
-| Bedrock (AI models) | *no substitute today* — AI features degrade, see Limitations | open |
+| Bedrock (AI models) | *no substitute today*; AI features degrade, see Limitations | open |
 | IRSA | not needed off-AWS | n/a |
 
 ---
@@ -32,16 +32,17 @@ Kubernetes — with the AWS-managed services swapped for on-prem equivalents:
 
 - One or more **amd64** Linux hosts for the cluster (Ubuntu LTS tested).
 - A **Kubernetes cluster**. k3s is shown here; **RKE2** is a good hardened/FIPS-capable choice for production.
-- Internet egress to pull images (or a mirrored registry for air-gap — not covered here).
-- **GHCR pull credentials** (a token; for customers, a dedicated deploy account — see §2).
+- Internet egress to pull images (or a mirrored registry for air-gap, which this guide doesn't cover).
+- **GHCR pull credentials** (a token; for customers, a dedicated deploy account; see §2).
 - A **DNS name** you control that the endpoints can resolve, and a **CA the endpoints trust**
   (an internal CA pushed by your MDM/AD works well).
 - **Postgres** reachable from the cluster.
-- Tools on the machine you run the install from — none are preinstalled on a stock Ubuntu server:
+- Tools on the machine you run the install from:
   - `kubectl` (k3s bundles one; see §1)
   - `helm` `>=4.0.0 <4.2.1` (install command in §3c)
-  - `openssl` — cert + secret generation (present on stock Ubuntu)
-  - `skopeo` (optional) — the §2 image-manifest check; `sudo apt install -y skopeo`
+  - `openssl` for cert and secret generation (present on stock Ubuntu)
+  - `skopeo` (optional) for the §2 image-manifest check. It ships with neither Ubuntu nor
+    macOS, so install it first: `sudo apt install -y skopeo`
 
 ---
 
@@ -71,9 +72,9 @@ kubectl get nodes
 
 ## 2. Image access (GHCR)  [validated]
 
-Images live at `ghcr.io/oryo-identity/<service>:<tag>` and are **multi-arch** — Kubernetes
-auto-selects amd64 on amd64 nodes. Optional check (`skopeo` isn't preinstalled on Ubuntu —
-`sudo apt install -y skopeo`, or skip this and let the pull itself confirm it):
+Images live at `ghcr.io/oryo-identity/<service>:<tag>` and are **multi-arch**; Kubernetes
+auto-selects amd64 on amd64 nodes. Optional check (skip it and a failed pull at install time
+surfaces the same problem):
 
 ```bash
 skopeo inspect --raw docker://ghcr.io/oryo-identity/api:<tag>
@@ -91,6 +92,9 @@ kubectl create secret docker-registry ghcr-pull \
   --namespace oryo
 ```
 
+The username is the GitHub account the token was issued under. Oryo-issued tokens come with
+the account name; use both exactly as provided.
+
 > **For customers:** don't share a personal token. Use a dedicated deploy account with a
 > per-customer token scoped to `read:packages`, so access can be revoked per customer.
 
@@ -103,18 +107,18 @@ kubectl create secret docker-registry ghcr-pull \
 The platform needs a Postgres database it can reach on 5432, with the target database already present.
 The chart's `dbInit` hook creates the per-service roles + schema inside it. Two ways:
 
-**Option A — point at an existing or dedicated Postgres (recommended for production).**
+**Option A: point at an existing or dedicated Postgres (recommended for production).**
 Don't deploy anything here. Make sure the DB is reachable from the cluster, then in `values.custom.yaml`:
 ```yaml
 global:
   db: { host: <your-postgres-host>, port: 5432, database: postgres, sslmode: require }
 ```
-…and set the `oryo-db-admin` secret to that DB's admin username + password — `dbInit` does the rest. On
+…and set the `oryo-db-admin` secret to that DB's admin username + password; `dbInit` does the rest. On
 Hyper-V this is typically a dedicated Postgres VM (persistent, backed up, kept alive by the failover
 cluster), or an existing Postgres the customer already runs.
 
-**Option B — in-cluster Postgres pod (lab / testing only).**
-Quick, but **ephemeral — the data is lost if the pod restarts**, so never use it for production:
+**Option B: in-cluster Postgres pod (lab / testing only).**
+Quick, but **ephemeral: the data is lost if the pod restarts**, so never use it for production:
 
 ```bash
 kubectl apply -n oryo -f - <<'EOF'
@@ -135,7 +139,7 @@ spec:
           image: postgres:15
           env:
             - name: POSTGRES_PASSWORD
-              value: change-me        # lab only — use a secret in prod
+              value: change-me        # lab only; use a secret in prod
             - name: POSTGRES_DB
               value: postgres
           ports:
@@ -162,7 +166,7 @@ kubectl run psql-test --rm -it --restart=Never -n oryo \
 
 For Option B, point the chart at it with `global.db.host: postgres`.
 
-### 3b. Object storage — not required
+### 3b. Object storage (not required)
 
 A recent change removed the platform's dependency on S3 object storage, so no MinIO /
 S3-compatible store is needed on-prem. (If you're on an older chart that still references a
@@ -170,9 +174,9 @@ bucket, upgrade to the release that dropped it.)
 
 ### 3c. Ingress controller (replaces the ALB)  [validated]
 
-The chart ships AWS ALB ingress annotations — harmless, nginx ignores them. On-prem you provide the
-ingress controller here. Everything TLS lives in §7: the cert, the ingress wiring, and DNS all deal
-with resources that don't exist until the chart creates them at install time.
+The chart ships AWS ALB ingress annotations (harmless; nginx ignores them). On-prem you provide the
+ingress controller here. Everything TLS lives in §7: the cert, the ingress wiring, and DNS all touch
+resources that the chart only creates at install time.
 
 **Disable k3s's built-in Traefik** (it owns 80/443; nginx needs them):
 ```bash
@@ -204,7 +208,7 @@ The chart expects these in the namespace: `oryo-session-secret`, `oryo-db-admin`
 ```bash
 # session signing key
 kubectl -n oryo create secret generic oryo-session-secret --from-literal=value=$(openssl rand -hex 32)
-# Postgres admin login — password MUST match your actual Postgres
+# Postgres admin login; password MUST match your actual Postgres
 kubectl -n oryo create secret generic oryo-db-admin \
   --from-literal=username=postgres --from-literal=password=<your-postgres-password>
 # per-service DB role passwords (dbInit creates the roles with these)
@@ -269,7 +273,7 @@ api:
   ingress: { className: nginx, host: api.oryo.local }
 ```
 
-> The chart's leftover ALB annotations (`alb.ingress.kubernetes.io/*`) are harmless — nginx
+> The chart's leftover ALB annotations (`alb.ingress.kubernetes.io/*`) are harmless; nginx
 > ignores them. Wiring the TLS cert + internal DNS to actually *reach* the services happens after
 > the install (§7). The pods themselves install and run with the above.
 
@@ -302,7 +306,7 @@ kubectl -n oryo logs job/oryo-oryo-platform-db-init -f
 
 The install created the three ingresses, so the TLS chain can go in now.
 
-**Create the cert** — an internal CA cert in prod; self-signed for the lab:
+**Create the cert** (an internal CA cert in prod; self-signed for the lab):
 ```bash
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout /tmp/tls.key -out /tmp/tls.crt -subj "/CN=app.<DOMAIN>" \
@@ -319,38 +323,37 @@ for ing in dashboard api gateway; do
 done
 ```
 
-**Name resolution** — `app/api/gateway.<DOMAIN>` must resolve to the ingress IP:
+**Name resolution:** `app/api/gateway.<DOMAIN>` must resolve to the ingress IP.
 - **Prod:** a record in the customer's internal DNS → ingress IP.
 - **Lab:** a hosts-file line on the machine you browse from (Windows: `C:\Windows\System32\drivers\etc\hosts`):
   `<ingress-ip>  app.<DOMAIN> api.<DOMAIN> gateway.<DOMAIN>`.
 
 > **Why this matters for login:** the dashboard sets a `Secure` session cookie, so you must reach it
-> over **https at the hostname** — not `http://<ip>` or a port-forward, or the second step of login
+> over **https at the hostname**. Over `http://<ip>` or a port-forward, the second step of login
 > silently fails (the browser won't store a `Secure` cookie over plain http).
 
-**Trust the cert on every machine that talks to the platform** — not just the endpoints:
-- every **admin machine you browse the dashboard from** — on a Hyper-V setup that's typically both
-  the Hyper-V host and your own workstation, if you browse from both;
+**Trust the cert on every machine that talks to the platform:**
+- every **admin machine you browse the dashboard from** (on a Hyper-V setup that's typically both
+  the Hyper-V host and your own workstation);
 - every **endpoint that will run a sensor** (push the internal CA via MDM/AD).
 
 ingress-nginx sends an HSTS header on every TLS response by default. Once a browser has recorded it
-for your domain, it **refuses untrusted certs with no "proceed anyway" option** — so importing the
-cert (or its issuing CA) into each machine's trust store is required, not a nicety. Also avoid
-internal domains under HSTS-preloaded TLDs like `.dev` or `.app`; browsers hard-require trusted TLS
-there from the first visit.
+for your domain, it **refuses untrusted certs with no "proceed anyway" option**, so the cert (or its
+issuing CA) must be imported into each machine's trust store. Also avoid internal domains under
+HSTS-preloaded TLDs like `.dev` or `.app`; browsers hard-require trusted TLS there from the first
+visit.
 
 **Install sensors** per the dashboard's **Settings → Installation** (CA download + install
 one-liner; roll out via Intune/MDM). Two platform env vars control this flow:
 
-- `SENSOR_DOWNLOAD_BASE_URL` (§5) — on-prem deployments have no sensor-binaries bucket, so without
+- `SENSOR_DOWNLOAD_BASE_URL` (§5): on-prem deployments have no sensor-binaries bucket, so without
   it the install-script routes return 503 and the sensor config names no release. Point it at Oryo's
   public bucket (endpoints fetch binaries from there over HTTPS; **registration and sensor config
-  still go to your platform** — the served script is rewritten to your `API_BASE_URL`), or at an
+  still go to your platform**, since the served script is rewritten to your `API_BASE_URL`), or at an
   internal mirror if endpoints have no egress.
-- `SENSOR_PINNED_VERSION` — stamped into the chart at release time; it pins every install and
-  update to the sensor build the release was tested with. You don't set it yourself, but on charts
-  that carry it the API requires `SENSOR_DOWNLOAD_BASE_URL` to be set, so treat that value as
-  required, not optional.
+- `SENSOR_PINNED_VERSION`: stamped into the chart at release time; it pins every install and
+  update to the sensor build the release was tested with. The release sets it for you, and on charts
+  that carry it the API requires `SENSOR_DOWNLOAD_BASE_URL`, so treat that value as required.
 
 ---
 
@@ -358,10 +361,10 @@ one-liner; roll out via Intune/MDM). Two platform env vars control this flow:
 
 - **AI features need AWS Bedrock.** Auto-classification, active discovery, DLP scan, parser
   fallback, and enrichment call Bedrock and have **no on-prem substitute yet**. They degrade
-  silently — the install succeeds and regex/allowlist rules still match, but model-driven features
+  silently: the install succeeds and regex/allowlist rules still match, but model-driven features
   stop producing output. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features).
-- **Ingress** — the chart's ALB annotations need an on-prem swap (§3c).
-- **Login depends on Resend** — sign-in codes are emailed via Resend (an external SaaS). Compliance-
+- **Ingress:** the chart's ALB annotations need an on-prem swap (§3c).
+- **Login depends on Resend.** Sign-in codes are emailed via Resend (an external SaaS). Compliance-
   sensitive customers may object to auth emails leaving their network; SMTP/SES support is reportedly
   on the way. Confirm the customer's stance before go-live.
 
@@ -371,17 +374,17 @@ one-liner; roll out via Intune/MDM). Two platform env vars control this flow:
 
 | Symptom | Likely cause | Check |
 |---|---|---|
-| `ImagePullBackOff` + `FailedToRetrieveImagePullSecret` / 401 | The Kubernetes pull secret doesn't exist. **Gotcha:** pulling with `k3s ctr --user` authenticates *containerd*, not Kubernetes — pods still need the secret. | Create it: `kubectl -n oryo create secret docker-registry ghcr-pull --docker-server=ghcr.io --docker-username=<acct> --docker-password=<token>` |
+| `ImagePullBackOff` + `FailedToRetrieveImagePullSecret` / 401 | The Kubernetes pull secret doesn't exist. **Gotcha:** pulling with `k3s ctr --user` authenticates *containerd*, not Kubernetes; pods still need the secret. | Create it: `kubectl -n oryo create secret docker-registry ghcr-pull --docker-server=ghcr.io --docker-username=<account> --docker-password=<token>` |
 | `exec format error` | Wrong-arch image on the node | `uname -m` on the node vs the image's platforms (`skopeo inspect --raw`) |
 | `db-init` `CrashLoopBackOff` / `28P01 password authentication failed` | The `oryo-db-admin` secret password doesn't match the actual Postgres password | Recreate `oryo-db-admin` with the DB's real password, then re-run the install |
 | Rerun fails: *"another operation in progress"* | A killed/interrupted install left the release `pending-install` | `helm uninstall oryo -n oryo`, then re-run `helm upgrade --install` |
 | `dbInit` job fails then vanishes | Hook rolled back and was cleaned up (avoid `--atomic` while debugging) | Stream it live: `kubectl logs job/oryo-oryo-platform-db-init -f`, or install with `--no-hooks` to debug separately |
 | Cluster API unreachable after reboot | Node IP changed | Confirm the node's static IP / DHCP reservation |
 | Sensor can't reach the platform | DNS or cert | Endpoint must resolve the hostname to the ingress IP and trust the cert |
-| Login code rejected even when fresh/correct | Accessing over `http` (port-forward or raw IP) drops the `Secure` session cookie set in login step 1 | Reach the app over **https at its hostname** (cert + DNS/hosts), not the IP |
-| Browser blocks the site with a cert error and **no "proceed anyway" link** | HSTS (sent by ingress-nginx by default) + a cert this machine doesn't trust | Import the cert/CA into **this machine's** trust store (§7) — every machine that browses the dashboard needs it, not just the endpoints |
-| `GET /install.sh` or `/install.ps1` returns 503 | `SENSOR_DOWNLOAD_BASE_URL` not set — the deployment has no sensor-binaries source | Set it in `values.custom.yaml` (§5) and upgrade |
-| No email provider in the lab — can't receive the login code | Resend is stubbed, so the code email never arrives | Pull it straight from Postgres: `SELECT token FROM login_events ORDER BY created_at DESC LIMIT 1;` |
+| Login code rejected even when fresh/correct | Accessing over `http` (port-forward or raw IP) drops the `Secure` session cookie set in login step 1 | Reach the app over **https at its hostname** (cert + DNS/hosts) rather than the IP |
+| Browser blocks the site with a cert error and **no "proceed anyway" link** | HSTS (sent by ingress-nginx by default) + a cert this machine doesn't trust | Import the cert/CA into **this machine's** trust store (§7); every machine that browses the dashboard needs it |
+| `GET /install.sh` or `/install.ps1` returns 503 | `SENSOR_DOWNLOAD_BASE_URL` not set, so the deployment has no sensor-binaries source | Set it in `values.custom.yaml` (§5) and upgrade |
+| No email provider in the lab | Resend is stubbed, so the code email never arrives | Pull it straight from Postgres: `SELECT token FROM login_events ORDER BY created_at DESC LIMIT 1;` |
 
 ---
 
