@@ -46,9 +46,9 @@ flowchart LR
         RESEND[(Resend SMTP)]
     end
 
-    subgraph ORYO["Oryo · cross-account"]
+    subgraph ORYO["Oryo · distribution"]
         direction TB
-        ECR[(ECR<br/>container images)]
+        GHCR[(GHCR<br/>container images)]
         BIN[(S3<br/>sensor binaries)]
     end
 
@@ -57,7 +57,7 @@ flowchart LR
     SENSOR -. installer fetch .-> ALB_API
     SENSOR -. installer bytes .-> BIN
     PODS -. login emails .-> RESEND
-    PODS -. image pull .-> ECR
+    PODS -. image pull .-> GHCR
 
     classDef cust fill:#f0fff4,stroke:#3a7a4a,color:#0a3a1a
     classDef oryo fill:#fff5e6,stroke:#9c6b1d,color:#3a2a0a
@@ -79,7 +79,7 @@ flowchart LR
     - public-subnet tags
     - dedicated arm64 NodePool
     - Bedrock model access (Claude 3 Haiku + Nova Micro)
-- Oryo's account ID grant to its ECR repository policies. Contact your Oryo rep if your AWS account hasn't been provisioned access to the ECR images yet.
+- An Oryo-issued GHCR pull token (`read:packages` on `ghcr.io/oryo-identity`), stored as a `docker-registry` secret. Contact your Oryo rep if you don't have one yet.
 
 ## Quick start
 
@@ -94,16 +94,20 @@ Requires Helm `>=4.0.0 <4.2.1`.
 #    (or have Oryo provision them on your behalf).
 
 # 2. Preflight: verify the prereqs and (with the flag) create the
-#    5 required k8s secrets.
+#    6 required k8s secrets.
 cp .env.example .env
 $EDITOR .env
 ./scripts/verify.sh
 
-# 3. Override what you need to (domain, cert ARN, role ARN, RDS host, etc.)
+# 3. Override what you need to (pull secret, domain, cert ARN, role ARN, RDS host, etc.)
 $EDITOR values.custom.yaml   # gitignored; create with just your overrides
 
-# 4. Log in to the chart registry with the credentials from your release
-helm registry login <registry-host>
+# 4. Log in to the chart registry and create the image pull secret,
+#    both with your Oryo-issued GHCR token (read:packages)
+helm registry login ghcr.io
+kubectl create namespace oryo   # skip if verify.sh already made it
+kubectl -n oryo create secret docker-registry ghcr-pull \
+  --docker-server=ghcr.io --docker-username=<account> --docker-password=<token>
 
 # 5. Install the released version (registry + <version> are in the GitHub Release)
 helm upgrade --install oryo \

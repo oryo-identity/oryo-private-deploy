@@ -16,7 +16,7 @@ These need to exist before you start. The install kit doesn't create anything in
 | Bedrock model access | Per-region opt-in for Claude 3 Haiku and Nova Micro ([docs/prereqs.md §5](prereqs.md)). The install still succeeds without it, but auto-classification, active discovery, and the DLP policy won't work; see [Bedrock-dependent features](#bedrock-dependent-features). |
 | Postgres database | RDS recommended. Reachable from the cluster VPC on port 5432. The target database must exist (the default `postgres` works); see [docs/prereqs.md §6](prereqs.md). |
 | Domain, Route 53 zone, ACM cert | A Route 53 hosted zone for your domain in the same AWS account, and a wildcard ACM cert for `*.<your-domain>` in the cluster's region, in status `ISSUED`. See [docs/prereqs.md §7](prereqs.md). |
-| Oryo ECR pull grant | Oryo grants your AWS account ID pull access to its image registry. Contact your Oryo rep if your account hasn't been provisioned access yet. |
+| Oryo GHCR pull token | Oryo issues a read-only token for `ghcr.io/oryo-identity`. Store it as a `docker-registry` secret (`ghcr-pull`) and set `global.imagePullSecrets`. Contact your Oryo rep if you don't have one yet. |
 
 `verify.sh` checks all of the above and can optionally bootstrap the in-cluster Kubernetes secrets. `helm install` does the rest.
 
@@ -26,13 +26,13 @@ These need to exist before you start. The install kit doesn't create anything in
 
 You need these installed locally to follow the runbook:
 
-- `aws` CLI (v2) — authentication and every AWS-side operation
-- `kubectl` — to talk to your EKS cluster
-- `helm` `>=4.0.0 <4.2.1` — to install and upgrade the chart. 4.2.1 can hang upgrades for several minutes per hook while cleaning up resources.
-- `eksctl` — only for the eksctl IRSA path in [docs/prereqs.md §2b](prereqs.md) (skip it if you create the role manually)
-- `jq` — used by `verify.sh` to inspect Auto Mode NodePools during preflight
-- `openssl` — used by `verify.sh --bootstrap-secrets` to generate session and role passwords (the system default works on macOS and Linux)
-- `docker` (optional) — only for local image verification
+- `aws` CLI (v2): authentication and every AWS-side operation
+- `kubectl`: to talk to your EKS cluster
+- `helm` `>=4.0.0 <4.2.1`: to install and upgrade the chart. 4.2.1 can hang upgrades for several minutes per hook while cleaning up resources.
+- `eksctl`: only for the eksctl IRSA path in [docs/prereqs.md §2b](prereqs.md) (skip it if you create the role manually)
+- `jq`: used by `verify.sh` to inspect Auto Mode NodePools during preflight
+- `openssl`: used by `verify.sh --bootstrap-secrets` to generate session and role passwords (the system default works on macOS and Linux)
+- `docker` (optional): only for local image verification
 
 ## 1. Connect
 
@@ -67,7 +67,7 @@ cd customer
 cp .env.example .env
 $EDITOR .env          # AWS_PROFILE, AWS_REGION, ACCOUNT_ID, CLUSTER_NAME, NAMESPACE, BUCKET_NAME
 
-./scripts/verify.sh    # preflight — checks bucket, IAM role, subnet tags, arm64, secrets
+./scripts/verify.sh    # preflight: checks bucket, IAM role, subnet tags, arm64, secrets
 ```
 
 It prints a pass/fail for each check, and points you at the right section of `prereqs.md` for anything that's missing. Once everything passes, it prints the role ARN and bucket name for `values.yaml`.
@@ -82,6 +82,18 @@ The chart needs these secrets in your namespace: `oryo-session-secret`, `oryo-db
   ./scripts/verify.sh --bootstrap-secrets
   ```
   This generates the random secrets (session and per-service DB passwords) and creates `oryo-db-admin` from your `.env`. It's safe to re-run.
+
+Either way, the namespace also needs the **GHCR pull secret**: the Oryo-issued `read:packages` token from the prerequisites, stored as a `docker-registry` secret so the pods can pull Oryo's images. `verify.sh` checks it but can't generate it:
+
+```bash
+kubectl create namespace <NAMESPACE>   # skip if it already exists
+kubectl -n <NAMESPACE> create secret docker-registry ghcr-pull \
+  --docker-server=ghcr.io \
+  --docker-username=<github-account> \
+  --docker-password=<oryo-issued-token>
+```
+
+`<github-account>` is the GitHub account the token was issued under; Oryo provides it together with the token. Reference the secret from `values.custom.yaml` via `global.imagePullSecrets` (§3).
 
 > Database note: the target Postgres database must already exist (the default `postgres` works, or create your own and set it in `values.yaml` → `global.db.database`). dbInit creates the per-service roles and schema but doesn't create the database itself.
 
@@ -102,26 +114,27 @@ helm show values oci://<registry-host>/charts/oryo-platform --version <version>
 ```
 
 Override at least these:
-- `global.env.DOMAIN`, `APP_BASE_URL`, `API_BASE_URL` — your domain.
-- `global.env.DEFAULT_BUCKET` — the bucket name from `.env`.
-- `global.db.host` / `database` — your RDS endpoint and database name.
-- `serviceAccount.annotations.eks.amazonaws.com/role-arn` — the IRSA role ARN from `verify.sh`.
-- `alb.ingress.kubernetes.io/certificate-arn` — the ACM cert ARN from prereqs (all 3 ingresses use it).
-- Ingress hostnames — `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
-- `dbInit.defaultTenant` — your org name and owner email.
-- `global.env.ENV_NAME` — must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
+- `global.imagePullSecrets`: `[{ name: ghcr-pull }]`, the pull secret from §2.
+- `global.env.DOMAIN`, `APP_BASE_URL`, `API_BASE_URL`: your domain.
+- `global.env.DEFAULT_BUCKET`: the bucket name from `.env`.
+- `global.db.host` / `database`: your RDS endpoint and database name.
+- `serviceAccount.annotations.eks.amazonaws.com/role-arn`: the IRSA role ARN from `verify.sh`.
+- `alb.ingress.kubernetes.io/certificate-arn`: the ACM cert ARN from prereqs (all 3 ingresses use it).
+- Ingress hostnames: `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
+- `dbInit.defaultTenant`: your org name and owner email.
+- `global.env.ENV_NAME`: must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
 
 ## 4. Install from the registry
 
 The chart is published to Oryo's registry as a versioned OCI artifact. The `oci://` URL and `<version>` are in each [GitHub Release](https://github.com/oryo-identity/oryo-private-deploy/releases), along with the image digests you can check against later.
 
-Log in to the registry first, using the credentials provided with your release:
+Log in to the registry first, with the same GHCR credentials as the pull secret in §2 (the GitHub account and Oryo-issued `read:packages` token):
 
 ```bash
-helm registry login <registry-host>
+helm registry login ghcr.io
 ```
 
-`helm` prompts for the username and token, or you can pass them with `--username` and `--password-stdin`. Log in to the registry host only, with no `/charts/...` path. Your account needs Oryo's pull grant for the registry; if login works but the install gets a 403 on the pull, that grant is missing, so contact your Oryo rep.
+`helm` prompts for the username and token, or you can pass them with `--username` and `--password-stdin`. Log in to the registry host only, with no `/charts/...` path. If login works but the install gets a 403 on the pull, your token lacks access to Oryo's packages; contact your Oryo rep.
 
 Then install the version you want:
 
@@ -139,7 +152,7 @@ Use `helm upgrade --install` for both the first install and later upgrades. It i
 
 If you bootstrapped secrets with `verify.sh --bootstrap-secrets`, the namespace already exists and `--create-namespace` is a no-op.
 
-If you're working on the chart itself, you can install from the local source dir instead: `helm install oryo ./oryo-platform --values oryo-platform/values.yaml -f values.custom.yaml`. That skips the published, version-pinned artifact, so it's only for chart development, not customer installs.
+If you're working on the chart itself, you can install from the local source dir instead: `helm install oryo ./oryo-platform --values oryo-platform/values.yaml -f values.custom.yaml`. That skips the published, version-pinned artifact, so use it only for chart development, never for a customer install.
 
 The timeout matters. The first install on a cold cluster pulls images, provisions arm64 nodes, runs the dbInit hook, and then waits for every pod to become Ready. That can take a few minutes. 10 minutes is usually plenty. Raise it if your cluster is provisioning capacity from scratch.
 
@@ -369,7 +382,7 @@ Several gateway and worker code paths call Bedrock (Claude 3 Haiku for classific
 | Parser fallback | Deterministic parsing still works; when it can't parse, the prompt renders raw instead of structured. |
 | Enricher | Enrichment metadata is absent. |
 
-Two failure modes show up the same way in the dashboard — tags and discovery both go missing — but they have different causes:
+Two failure modes show up the same way in the dashboard (tags and discovery both go missing) but they have different causes:
 - IAM: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel`. Fix the IRSA policy ([docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa-for-s3--bedrock)).
 - Model access: the same call returns `AccessDeniedException: You don't have access to the model with the specified model ID`. Enable model access in the Bedrock console ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
 
