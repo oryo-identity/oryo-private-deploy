@@ -84,10 +84,12 @@ curl -fsSL https://api.<DOMAIN>/install-linux.sh \
   | sudo REGISTRATION_TOKEN=sk_oryo_... ORYO_USERNAME=jane.doe@company.com API_BASE_URL=https://api.<DOMAIN> bash
 ```
 
-What it does: your platform serves the script (rewritten to your `API_BASE_URL`), which
-downloads the installer from `SENSOR_DOWNLOAD_BASE_URL`, verifies it against `SHA256SUMS`,
-and runs it. The installer registers the device, fetches the sensor config, downloads the
-sensor binary, and installs the service.
+What it does:
+
+- Your platform serves the script, rewritten to your `API_BASE_URL`.
+- The script downloads the installer from `SENSOR_DOWNLOAD_BASE_URL` and verifies it against `SHA256SUMS`.
+- The installer runs, registers the device, and fetches the sensor config.
+- It downloads the sensor binary and installs the service.
 
 ## Route 2: MDM fleet rollout (Intune, JAMF, etc.)
 
