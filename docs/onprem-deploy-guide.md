@@ -1,14 +1,14 @@
-# Oryo On-Prem Deployment — Step-by-Step Guide
+# Oryo On-Prem Deployment: Step-by-Step Guide
 
-A complete walkthrough of deploying the Oryo platform on-prem with **no AWS** — from a Hyper-V server
+A complete walkthrough of deploying the Oryo platform on-prem with **no AWS**: from a Hyper-V server
 through building the VM and Kubernetes cluster to logging into the running product.
 
 > **Who this is for.** An **on-prem Hyper-V server on your LAN** (the common case). The steps below
 > assume that. If you're validating in a **nested VM or cloud lab** (Hyper-V running *inside* a VM), a
-> couple of networking steps differ — those are called out inline as **BTW** notes. Any step without a
+> couple of networking steps differ; those are called out inline as **BTW** notes. Any step without a
 > BTW note is identical everywhere.
 >
-> **Already have a Kubernetes cluster?** Skip **Parts 1–2** and start at **Part 3** — you just point the
+> **Already have a Kubernetes cluster?** Skip **Parts 1–2** and start at **Part 3**; you just point the
 > install at your existing cluster.
 
 ![Oryo on-prem architecture](images/oryo-onprem-architecture.svg)
@@ -17,15 +17,15 @@ Each step notes the **expected result** so you can confirm it before moving on.
 
 ---
 
-## Part 0 — What you need
+## Part 0: What you need
 
 - A **Hyper-V server** on your LAN (or, for a lab, a host with nested virtualization)
-- An **Ubuntu Server 24.04 LTS (amd64)** ISO — from ubuntu.com/download/server
+- An **Ubuntu Server 24.04 LTS (amd64)** ISO, from ubuntu.com/download/server
 - Later: a **GHCR pull token**, a **Postgres** database, an internal **DNS name**, and a **TLS cert**
 
 ---
 
-## Part 1 — Create the Hyper-V VM and install Ubuntu
+## Part 1: Create the Hyper-V VM and install Ubuntu
 
 ### 1.1 Open Hyper-V Manager
 On your Hyper-V server, open **Hyper-V Manager** from the Start menu.
@@ -36,7 +36,7 @@ The VM needs to sit **on the LAN** so your endpoints and admins can reach it. In
 **Virtual Switch Manager → New virtual network switch → External**, bound to the server's physical NIC.
 (Skip if you already have one.)
 
-> **BTW — nested VM / cloud lab:** if your Hyper-V host is *itself* a VM, bridging to the LAN usually
+> **BTW (nested VM / cloud lab):** if your Hyper-V host is *itself* a VM, bridging to the LAN usually
 > won't work, so you'll use a **NAT / Internal** switch instead. The VM then gets a private IP rather
 > than a LAN IP. Everything else is the same; the couple of spots that differ are flagged **BTW**.
 
@@ -57,11 +57,11 @@ Then open the VM's **Settings**:
 Double-click the VM → **Connect** → **Start**, then walk the installer:
 - **Language / keyboard:** defaults.
 - **Install type:** Ubuntu Server (default).
-- **Network:** on your LAN the VM gets an IP automatically via DHCP — just continue.
-  > **BTW — nested / NAT lab:** a NAT switch has no DHCP, so `eth0` may show no IP. Pick **"Continue without network"** and set it by hand after first boot (2.1 BTW).
+- **Network:** on your LAN the VM gets an IP automatically via DHCP; just continue.
+  > **BTW (nested / NAT lab):** a NAT switch has no DHCP, so `eth0` may show no IP. Pick **"Continue without network"** and set it by hand after first boot (2.1 BTW).
 - **Proxy:** leave blank. **Mirror:** accept the default.
 - **Storage:** **Use an entire disk**, keep **LVM**, encryption off. On the summary the root volume usually
-  claims only ~half the disk — select **`ubuntu-lv` → Edit → set size to max**. **Done** → confirm.
+  claims only ~half the disk; select **`ubuntu-lv` → Edit → set size to max**. **Done** → confirm.
 - **Profile:** your name, a server name, a **username**, a **password**. Note: your login is the exact
   **username** you type (not your full name).
 - **SSH:** check **Install OpenSSH server**. "Import SSH identity" = No.
@@ -70,12 +70,12 @@ Double-click the VM → **Connect** → **Start**, then walk the installer:
 **Expected result:** the VM reboots to a `login:` prompt.
 
 ### 1.5 First login
-At `login:`, type your **username**, Enter, then your **password** (typing is invisible — this is normal).
+At `login:`, type your **username**, Enter, then your **password** (typing is invisible; this is normal).
 **Expected result:** you land at a `$` shell prompt.
 
 ---
 
-## Part 2 — Networking and the Kubernetes cluster
+## Part 2: Networking and the Kubernetes cluster
 
 ### 2.1 Confirm networking and pin the IP
 On your LAN the VM already has an IP from DHCP. Confirm it, then make it stable:
@@ -86,12 +86,12 @@ sudo apt update   # confirms internet + DNS both work
 Kubernetes needs the node's IP to stay constant, so give this VM a **DHCP reservation** (tie its MAC to a
 fixed IP on your DHCP server) or set a static IP. That's the only networking task on a real LAN.
 
-> **BTW — nested / NAT lab:** a NAT switch has no DHCP, so you set a static IP by hand. Find the switch's
+> **BTW (nested / NAT lab):** a NAT switch has no DHCP, so you set a static IP by hand. Find the switch's
 > gateway on the host with PowerShell (`Get-NetIPAddress ... NestedNATSwitch`), then apply a static
 > netplan in the VM:
 
 ```bash
-# nested-lab only — static IP on a NAT switch (real LAN uses DHCP, skip this)
+# nested-lab only: static IP on a NAT switch (real LAN uses DHCP, skip this)
 sudo tee /etc/netplan/01-static.yaml >/dev/null <<'EOF'
 network:
   version: 2
@@ -128,7 +128,7 @@ kubectl get nodes
 
 ---
 
-## Part 3 — Registry access (GHCR)
+## Part 3: Registry access (GHCR)
 
 ### 3.1 Create a pull token
 GitHub → the `oryo-deploy` account → Developer settings → **token with `read:packages`**.
@@ -139,20 +139,22 @@ kubectl create namespace oryo
 kubectl -n oryo create secret docker-registry ghcr-pull \
   --docker-server=ghcr.io --docker-username=<account> --docker-password=<token>
 ```
+`<account>` is the GitHub account the token was issued under (here, `oryo-deploy`); `<token>` is
+the value from 3.1.
 
 ### 3.3 Confirm the image is multi-arch (amd64 works on Hyper-V)
-Optional check. `skopeo` isn't preinstalled on Ubuntu, so install it first (or skip this step —
+Optional check. `skopeo` isn't preinstalled on Ubuntu, so install it first (or skip this step;
 a failed pull in Part 7 would surface the same problem):
 ```bash
 sudo apt install -y skopeo
 skopeo inspect --raw docker://ghcr.io/oryo-identity/api:<tag>
 ```
-**Expected result:** the manifest lists platform entries for both `amd64` and `arm64` — Kubernetes
+**Expected result:** the manifest lists platform entries for both `amd64` and `arm64`; Kubernetes
 auto-picks amd64 on a Hyper-V host.
 
 ---
 
-## Part 4 — Dependencies
+## Part 4: Dependencies
 
 ### 4.1 Postgres  (lab: in-cluster; production: a real/persistent DB)
 ```bash
@@ -199,7 +201,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.ingressClassResource.name=nginx \
   --set controller.service.type=LoadBalancer
 ```
-> **BTW — already have an ingress controller?** (Common on an existing cluster.) Skip this and just use
+> **BTW (already have an ingress controller?):** common on an existing cluster. Skip this and just use
 > its ingress class name in Part 7's `ingressClassName`.
 
 **Expected result:** `kubectl get svc -n ingress-nginx` shows the controller with an `EXTERNAL-IP`
@@ -207,7 +209,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 
 ---
 
-## Part 5 — Secrets
+## Part 5: Secrets
 
 ```bash
 kubectl -n oryo create secret generic oryo-session-secret --from-literal=value=$(openssl rand -hex 32)
@@ -223,49 +225,49 @@ kubectl -n oryo create secret generic oryo-resend-api-key --from-literal=value=<
 
 ---
 
-## Part 6 — TLS + DNS
+## Part 6: TLS + DNS
 
 ### 6.1 TLS cert
-Load a cert for `app/api/gateway.<domain>` as a Kubernetes secret. Issue it from your **internal CA** —
+Load a cert for `app/api/gateway.<domain>` as a Kubernetes secret. Issue it from your **internal CA**;
 your domain-joined machines already trust it, so no browser warnings:
 ```bash
 kubectl -n oryo create secret tls oryo-tls --cert=your-cert.crt --key=your-cert.key
 ```
-> **BTW — lab / no internal CA:** generate a self-signed cert first (the browser will warn once):
+> **BTW (lab / no internal CA):** generate a self-signed cert first (the browser will warn once):
 
 ```bash
-# lab only — self-signed cert
+# lab only: self-signed cert
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout /tmp/tls.key -out /tmp/tls.crt -subj "/CN=app.<domain>" \
   -addext "subjectAltName=DNS:app.<domain>,DNS:api.<domain>,DNS:gateway.<domain>"
 kubectl -n oryo create secret tls oryo-tls --cert=/tmp/tls.crt --key=/tmp/tls.key
 ```
 
-**Which machines need to trust the cert:** every machine that talks to the platform, which means
-*every admin machine you browse the dashboard from* — on a Hyper-V setup that's usually both the
-Hyper-V host and your own workstation — plus, later, every endpoint that runs a sensor (Part 9).
+**Which machines need to trust the cert:** every machine that talks to the platform. That means
+*every admin machine you browse the dashboard from* (on a Hyper-V setup that's usually both the
+Hyper-V host and your own workstation) plus, later, every endpoint that runs a sensor (Part 9).
 On a domain, the internal CA is already trusted everywhere; with the lab's self-signed cert, import
 `tls.crt` into each machine's trust store (Windows: double-click → Install Certificate → Local
 Machine → Trusted Root Certification Authorities).
 
 > **Why you can't just click past the warning:** the ingress sends an HSTS header on every https
 > response. Once a browser has recorded it for your domain, cert errors lose the "proceed anyway"
-> link entirely — trusting the cert is the only way in. (Also avoid internal domains ending in
+> link entirely; trusting the cert is the only way in. (Also avoid internal domains ending in
 > `.dev` or `.app`; browsers hard-require trusted TLS on those from the very first visit.)
 
 ### 6.2 DNS
 Add **internal DNS records** so `app/api/gateway.<domain>` resolve to the ingress IP (from
 `kubectl get svc -n ingress-nginx`). Everyone on the LAN can then reach the platform by name.
 
-> **BTW — lab:** skip DNS entirely and add a hosts-file line on **each** machine you browse from —
-> same set of machines as the cert trust in 6.1
+> **BTW (lab):** skip DNS entirely and add a hosts-file line on **each** machine you browse from
+> (same set of machines as the cert trust in 6.1)
 > (Windows: `C:\Windows\System32\drivers\etc\hosts`): `<ingress-ip>  app.<domain> api.<domain> gateway.<domain>`
 
 **Expected result:** `nslookup app.<domain>` from a LAN machine returns the ingress IP.
 
 ---
 
-## Part 7 — Install Oryo
+## Part 7: Install Oryo
 
 ### 7.1 Write `values.custom.yaml`
 ```yaml
@@ -296,6 +298,7 @@ echo "<token>" | helm registry login ghcr.io -u <account> --password-stdin
 helm upgrade --install oryo oci://ghcr.io/oryo-identity/charts/oryo-platform --version <version> \
   --namespace oryo --create-namespace -f values.custom.yaml --cleanup-on-fail --timeout 10m
 ```
+Same `<account>` and `<token>` as the pull secret in 3.2.
 
 ### 7.3 Wire the cert into the ingresses (after install created them)
 ```bash
@@ -314,7 +317,7 @@ kubectl get pods -n oryo
 
 ---
 
-## Part 8 — Log in to the dashboard
+## Part 8: Log in to the dashboard
 
 **8.1** Browse **`https://app.<your-domain>`** from any machine on the LAN.
 **Expected result:** the Oryo login page loads.
@@ -325,18 +328,18 @@ code from the database:
 kubectl -n oryo exec -it deploy/postgres -- psql -U postgres -d postgres -t -c \
 "SELECT token FROM login_events ORDER BY created_at DESC LIMIT 1;"
 ```
-**Expected result:** you land on the **Home** dashboard — panels for **AI Inventory**, **Security
+**Expected result:** you land on the **Home** dashboard, with panels for **AI Inventory**, **Security
 Violations**, and **Agent Inventory** (all at zero until sensors start reporting in). This confirms the
 whole stack works end to end.
 
 ![Oryo Home dashboard](images/dashboard-home.png)
 
-> **Note:** always reach the platform over **https at the hostname**, never `http://<ip>` — the login
+> **Note:** always reach the platform over **https at the hostname**, never `http://<ip>`: the login
 > cookie is `Secure` and won't store over plain http, so login silently fails otherwise.
 
 ---
 
-## Part 9 — Roll out a sensor  (next milestone)
+## Part 9: Roll out a sensor  (next milestone)
 
 From the dashboard → **Settings → Installation**, download the CA certificate and copy the install
 one-liner, then push both to your endpoints via Intune/MDM.
@@ -344,7 +347,7 @@ one-liner, then push both to your endpoints via Intune/MDM.
 This works because `SENSOR_DOWNLOAD_BASE_URL` was set in Part 7.1: the endpoints fetch the install
 script and sensor binary from Oryo's public bucket, while registration and sensor config go to your
 platform (the served script is rewritten to your `API_BASE_URL`). Without that value the install
-routes return **503**. The endpoints also need to trust your platform cert (Part 6.1) — push it
+routes return **503**. The endpoints also need to trust your platform cert (Part 6.1); push it
 alongside the Oryo CA.
 
 **Expected result:** the dashboard's **Devices** page fills in as sensors register, and AI activity begins
@@ -361,7 +364,7 @@ appearing on the Home dashboard.
 | Name resolution | internal DNS records | hosts-file line |
 | TLS cert | internal CA cert | self-signed |
 | Postgres | dedicated / persistent | in-cluster (fine for testing) |
-| Everything else | — | identical |
+| Everything else | identical | identical |
 
 ---
 
@@ -377,4 +380,4 @@ appearing on the Home dashboard.
 | Cert error with no "proceed anyway" link | HSTS + a cert this machine doesn't trust | import the cert into this machine's trust store (Part 6.1) |
 | Install one-liner gets a 503 | `SENSOR_DOWNLOAD_BASE_URL` missing | set it in `values.custom.yaml` (Part 7.1) and upgrade |
 
-*Command reference: on-prem-runbook.md. Concepts: the "Virtualization & networking" study note.*
+*Command reference: [on-prem-runbook.md](on-prem-runbook.md).*
