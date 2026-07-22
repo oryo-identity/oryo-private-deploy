@@ -29,10 +29,6 @@ for the git tag, the OCI tag, and the bucket's `executables/<version>/` director
 stage binaries on a mirror, reuse that exact `v`-prefixed directory name. The chart's GitHub
 Release notes list the pinned version.
 
-> **Never use `:latest`** on the sensor OCI repo or the S3 bucket paths when staging
-> binaries. The tag tracks whatever was promoted most recently and can lag or lead your
-> platform's pin. Pull the explicit version.
-
 ---
 
 ## Route 1: dashboard one-liner (default)
