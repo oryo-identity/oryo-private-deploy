@@ -3,14 +3,8 @@
 Ways to get the Oryo sensor onto endpoints. Route 1 (the dashboard one-liner) is the default
 path. Routes 2 and 3 are for environments where endpoints can't (or shouldn't) reach Oryo's
 public download bucket: pull the binaries yourself over OCI, and optionally serve them from
-an internal mirror.
-
-> Route status: route 1 is the documented production path. Routes 2 and 3 are **[pending
-> validation]**; the commands are correct per the release tooling but haven't been walked
-> end-to-end in a lab yet. Flip this note when they have.
->
-> MDM fleet rollout (Intune, JAMF, etc.) will get its own section once it's documented as a
-> standalone flow rather than "run route 1 from a run-script policy."
+an internal mirror. For fleet rollout, package the route 1 one-liner (or a route 2/3 install
+command) into your MDM's run-script policy.
 
 ## Prerequisites (all routes)
 
@@ -98,7 +92,7 @@ What it does:
 - The installer runs, registers the device, and fetches the sensor config.
 - It downloads the sensor binary and installs the service.
 
-## Route 2: OCI pull + manual install  [pending validation]
+## Route 2: OCI pull + manual install
 
 Each sensor release is published as one OCI artifact at
 `ghcr.io/oryo-identity/sensor/oryo-sensor:<vX.Y.Z>`. It bundles, for every supported platform
@@ -157,7 +151,7 @@ unset), point the installer straight at the versioned bucket directory with
 
 It's the same flag route 3 uses for a mirror, and it takes precedence over the remote config.
 
-## Route 3: internal mirror (no-egress endpoints)  [pending validation]
+## Route 3: internal mirror (no-egress endpoints)
 
 For endpoints with no path to Oryo's public bucket, host the release bundle yourself:
 
