@@ -85,7 +85,8 @@ What it does:
 
 - Your platform serves the script, rewritten to your `API_BASE_URL`.
 - The script downloads the installer from `SENSOR_DOWNLOAD_BASE_URL` and verifies it against `SHA256SUMS`.
-- The installer runs, registers the device, and fetches the sensor config.
+- The installer runs, registers the device, and fetches its config from the platform
+  (`https://api.<DOMAIN>/v1/sensor/config`), which tells it where to download the sensor from.
 - It downloads the sensor binary and installs the service.
 
 ## Route 2: OCI pull + manual install
@@ -135,17 +136,19 @@ sudo ./oryo-install-<platform> \
   --sensor-config-url https://api.<DOMAIN>/v1/sensor/config
 ```
 
-After registering, the installer fetches the updater and sensor binaries from the download
-URL in the platform's remote config (built from `SENSOR_DOWNLOAD_BASE_URL`). If the platform
-serves no download URL (the config logs `download_url=""`, e.g. `SENSOR_DOWNLOAD_BASE_URL` is
-unset), point the installer straight at the versioned bucket directory with
-`--download-base-url`. That value is the **full** path including `/executables/<vX.Y.Z>`:
+After registering, the installer asks the platform where to download from: it calls the
+sensor-config endpoint (`https://api.<DOMAIN>/v1/sensor/config`), which returns a download URL
+the platform builds from its `SENSOR_DOWNLOAD_BASE_URL`. If the platform has no
+`SENSOR_DOWNLOAD_BASE_URL` set, that URL comes back empty and the installer has nowhere to
+fetch from; point it straight at the versioned bucket directory with `--download-base-url`
+instead. That value is the **full** path including `/executables/<vX.Y.Z>`:
 
 ```bash
 --download-base-url https://binaries-pub-prod-us-east-1-oryo.s3.amazonaws.com/executables/<vX.Y.Z>
 ```
 
-It's the same flag route 3 uses for a mirror, and it takes precedence over the remote config.
+It's the same flag route 3 uses for a mirror, and it overrides the download URL the platform
+returns.
 
 ## Route 3: internal mirror (no-egress endpoints)
 
@@ -175,9 +178,9 @@ For endpoints with no path to Oryo's public bucket, host the release bundle your
          SENSOR_DOWNLOAD_BASE_URL: https://mirror.internal
      ```
 
-`--download-base-url` takes precedence over the URL in the remote config, so you can point a
-single endpoint at a mirror (or straight at Oryo's bucket) before switching the whole platform
-over.
+`--download-base-url` overrides the download URL the platform returns (the one it builds from
+`SENSOR_DOWNLOAD_BASE_URL`), so you can point a single endpoint at a mirror (or straight at
+Oryo's bucket) before switching the whole platform over.
 
 ---
 
@@ -193,7 +196,7 @@ page shows the registered sensor and its version.
 |---|---|---|
 | `sudo ./oryo-install-...: command not found` (file is present) | OCI pull dropped the execute bit; `sudo` reports a non-executable file as not-found | `chmod +x oryo-install-<platform>` and re-run (route 2) |
 | `GET /install.sh` returns 503 | `SENSOR_DOWNLOAD_BASE_URL` unset on the platform | Set it in `values.custom.yaml` and upgrade |
-| Install fails: "the server returned no release to download" / config logs `download_url=""` | Platform has no `SENSOR_DOWNLOAD_BASE_URL`, so it serves no download URL | Set it (`values.custom.yaml`) and upgrade, or pass `--download-base-url <base>/executables/<vX.Y.Z>` for a one-off |
+| Install fails: "the server returned no release to download" | Platform has no `SENSOR_DOWNLOAD_BASE_URL`, so the download URL it returns is empty | Set it (`values.custom.yaml`) and upgrade, or pass `--download-base-url <base>/executables/<vX.Y.Z>` for a one-off |
 | `403`/`404` fetching a binary | The version directory isn't at that path (usually a missing or extra leading `v`) | The dir is `executables/<vX.Y.Z>/`, `v`-prefixed, matching the sensor release tag |
 | Installer downloads fail on the endpoint | No network path to the download base URL | Use route 3 (mirror), or open egress to the bucket |
 | TLS errors on watched sites after install | Tenant CA missing from the endpoint's trust store | Re-push the CA; note the CA regenerates if the platform is reinstalled |
