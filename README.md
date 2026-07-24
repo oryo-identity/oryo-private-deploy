@@ -17,6 +17,7 @@ oryo-private-deploy/
 ├── docs/
 │   ├── prereqs.md        ← AWS-side prerequisites you provision before install
 │   ├── runbook.md        ← end-to-end install steps + gotchas
+│   ├── intune-deployment.md  ← Windows fleet install via Microsoft Intune
 │   └── glossary.md       ← terms + concepts
 ├── .env.example          ← verify.sh inputs
 └── LICENSE.md
