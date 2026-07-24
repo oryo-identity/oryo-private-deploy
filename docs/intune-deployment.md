@@ -21,6 +21,12 @@ Intune. Set Devices > Device settings > "Users may join devices" to All, and
 Devices > Mobility (MDM) > Microsoft Intune > MDM user scope to All, so an Entra
 join auto-enrolls into Intune.
 
+Endpoints also need outbound HTTPS to your Oryo API host (registration and
+sensor config) and to the sensor binaries host. By default the installer
+downloads the sensor binary from Oryo's public release bucket; on a network that
+blocks it, pass `--download-base-url` on the install command pointing at your
+own mirror.
+
 To check that a device can receive Win32 apps at all, see whether any other Win32
 app (for example Chrome) shows Installed on it. If it does, IME works and any
 remaining problem is specific to Oryo. If nothing installs, the blocker is one of
@@ -50,7 +56,8 @@ browsers report certificate errors even while the sensor is running.
 
 ## 4. Registration token
 
-Choose one option.
+Tokens are created and managed in the Oryo dashboard under Settings >
+Registration. Choose one option for getting the token onto devices.
 
 ### Option A: inline on the install command
 
@@ -87,16 +94,22 @@ did not run. Confirm on the device, or use Option A.
 
 Apps > Windows > Create > Windows app (Win32).
 
-- App package file: upload `oryo-install.intunewin` from the release bucket
+- App package file: upload `oryo-install.intunewin`. Download it from the
+  dashboard at Settings > Installation > Managed fleet (MDM), which serves the
+  build matching your deployment, or take it from the release bucket
   (`.../executables/<version>/oryo-install.intunewin`).
 - App information: Name `Oryo Sensor`, Publisher `Oryo Identity, Inc.`
 - Program:
 
   | Field | Value |
   |---|---|
-  | Install command | `oryo-install-windows-amd64.exe` (add `--registration-token "sk_oryo_..."` for token Option A; add `--sensor-config-url "https://api.<host>/v1/sensor/config"` for a non-prod environment) |
+  | Install command | `oryo-install-windows-amd64.exe` (add `--registration-token "sk_oryo_..."` for token Option A; add `--sensor-config-url "https://api.<host>/v1/sensor/config"` with your deployment's API host. Without the flag the sensor registers to Oryo's hosted service, so a self-hosted deployment must always pass it.) |
   | Uninstall command | `"C:\ProgramData\Oryo\bin\oryo-install.exe" --uninstall` |
   | Install behavior | System |
+
+  The dashboard's Settings > Installation > Managed fleet (MDM) page renders
+  this install command with your token and API host filled in; copying it from
+  there avoids assembling it by hand.
 
 - Requirements: OS architecture 64-bit, minimum OS Windows 10 1903.
 - Detection rule (the path is important; see troubleshooting):
