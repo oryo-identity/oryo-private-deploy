@@ -363,7 +363,8 @@ HSTS-preloaded TLDs like `.dev` or `.app`; browsers hard-require trusted TLS the
 visit.
 
 **Install sensors** per the dashboard's **Settings → Installation** (CA download + install
-one-liner; roll out via Intune/MDM). Two platform env vars control this flow:
+one-liner; roll out via Intune/MDM). For a Windows fleet, [intune-deployment.md](intune-deployment.md)
+is a full step-by-step. Two platform env vars control this flow:
 
 - `SENSOR_DOWNLOAD_BASE_URL` (§5): on-prem deployments have no sensor-binaries bucket, so without
   it the install-script routes return 503 and the sensor config names no release. Point it at Oryo's

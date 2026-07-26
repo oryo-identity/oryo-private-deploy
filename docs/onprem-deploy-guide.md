@@ -344,7 +344,8 @@ whole stack works end to end.
 ## Part 9: Roll out a sensor
 
 From the dashboard → **Settings → Installation**, download the CA certificate and copy the install
-one-liner, then push both to your endpoints via Intune/MDM.
+one-liner, then push both to your endpoints via Intune/MDM. For a Windows fleet, follow
+[intune-deployment.md](intune-deployment.md) for the full CA-profile + Win32-app walkthrough.
 
 This works because `SENSOR_DOWNLOAD_BASE_URL` was set in Part 7.1: the endpoints fetch the install
 script and sensor binary from Oryo's public bucket, while registration and sensor config go to your
