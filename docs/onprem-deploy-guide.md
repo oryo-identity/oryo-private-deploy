@@ -1,7 +1,9 @@
-# Oryo On-Prem Deployment: Step-by-Step Guide
+# Oryo Self-hosted Deployment: Step-by-Step Guide
 
-A complete walkthrough of deploying the Oryo platform on-prem with **no AWS**: from a Hyper-V server
-through building the VM and Kubernetes cluster to logging into the running product.
+A complete walkthrough of deploying the Oryo platform on your own hardware — **no managed-cloud
+infrastructure** — from a Hyper-V server through building the VM and Kubernetes cluster to logging into
+the running product. This is the **Self-hosted** profile; see [on-prem-runbook.md](on-prem-runbook.md)
+for the command reference and the Fully-on-prem (no-outbound-internet) variant.
 
 > **Who this is for.** An **on-prem Hyper-V server on your LAN** (the common case). The steps below
 > assume that. If you're validating in a **nested VM or cloud lab** (Hyper-V running *inside* a VM), a
@@ -339,7 +341,7 @@ whole stack works end to end.
 
 ---
 
-## Part 9: Roll out a sensor  (next milestone)
+## Part 9: Roll out a sensor
 
 From the dashboard → **Settings → Installation**, download the CA certificate and copy the install
 one-liner, then push both to your endpoints via Intune/MDM.

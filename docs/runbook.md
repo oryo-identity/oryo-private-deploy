@@ -1,6 +1,45 @@
-# Oryo Private Deployment Runbook
+# Oryo Private Deployment Runbook — Cloud
 
-How to install Oryo in your own AWS account. This targets EKS Auto Mode with arm64 (Graviton) nodes.
+Installs the **Cloud** profile: Oryo in your own cloud account on managed Kubernetes. Two other
+profiles run Oryo on your own hardware instead — see [Deployment profiles](#deployment-profiles).
+
+This runbook is written end-to-end for **AWS (EKS Auto Mode, arm64/Graviton nodes)** as a concrete,
+fully-worked reference. The platform itself is plain Kubernetes and runs on any managed cluster; the
+commands here are AWS CLI, but the shape is identical on Azure and GCP. The
+[Cloud service equivalents](#cloud-service-equivalents) table maps each AWS piece to its Azure/GCP
+counterpart.
+
+## Deployment profiles
+
+| Profile | Runs on | External calls | Guide |
+|---|---|---|---|
+| **Cloud** | your cloud account (AWS / Azure / GCP), managed Kubernetes + managed services | AI (Bedrock), login email (Resend) | this runbook |
+| **Self-hosted** | your own Kubernetes on your own hardware (Hyper-V, vSphere, bare metal) | AI (Bedrock) + login email (Resend), over the internet | [on-prem-runbook.md](on-prem-runbook.md) |
+| **Fully on-prem** | your own hardware, **no outbound internet** | none — AI features (Bedrock-dependent) are off in this mode today; email via your SMTP | [on-prem-runbook.md](on-prem-runbook.md) |
+
+## Cloud service equivalents
+
+AWS is the reference below. On another cloud, substitute the managed service in your column; the chart
+knobs are the same (`global.imageRegistry`, `serviceAccount.annotations` / `global.podLabels` for
+workload identity, `global.db.*`, `global.ingressClassName`).
+
+| Purpose | AWS (reference) | Azure | GCP |
+|---|---|---|---|
+| Managed Kubernetes | EKS Auto Mode | AKS | GKE |
+| Node architecture | arm64 (Graviton) | arm64 (Ampere) or amd64 | arm64 (Tau T2A) or amd64 |
+| Postgres | RDS | Azure Database for PostgreSQL | Cloud SQL for PostgreSQL |
+| Ingress + TLS + DNS | ALB + ACM + Route 53 | App Gateway + Key Vault + Azure DNS | GCLB + Google-managed certs + Cloud DNS |
+| Container registry | Oryo's GHCR (all profiles) — mirror to ECR if you prefer | …or ACR | …or Artifact Registry |
+| Pod → cloud identity | IRSA (SA annotation) | Entra Workload Identity (`azure.workload.identity/use` pod label) | GKE Workload Identity (SA annotation) |
+| **AI models** | **AWS Bedrock** | **AWS Bedrock** | **AWS Bedrock** |
+
+> **Bedrock is the one piece that doesn't substitute.** Oryo's classification, discovery, DLP-scan, and
+> enrichment call AWS Bedrock directly, with no Azure OpenAI / Vertex path today. Every profile — Azure,
+> GCP, or on-prem — needs an AWS account with Bedrock model access reachable, or those AI features stay
+> dark (the rest of the platform installs and runs; see [Bedrock-dependent features](#bedrock-dependent-features)).
+
+Node architecture is a chart setting (`global.nodeArchitecture`), not an AWS requirement — set it to
+`amd64` if your cluster runs x86 nodes.
 
 ---
 

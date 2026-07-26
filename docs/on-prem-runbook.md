@@ -1,30 +1,50 @@
-# Oryo On-Prem Deployment Runbook (experimental)
+# Oryo Deployment Runbook — Self-hosted
 
-> **Status: experimental.** The supported, hardened install path today is AWS/EKS; see
-> [runbook.md](runbook.md). This guide covers running Oryo on a **self-managed Kubernetes
-> cluster with no AWS**, substituting on-prem equivalents for the AWS-managed services.
-> Sections are marked **[validated]** (confirmed working in a lab) or **[planned]** (the
-> intended approach, not yet confirmed end-to-end). Air-gapped installs are out of scope here.
+> The **Self-hosted** profile runs Oryo on your own Kubernetes cluster and your own hardware — no
+> managed-cloud infrastructure (no EKS/RDS/ALB). It still reaches two services over the internet: **AWS
+> Bedrock** for the AI models behind classification/discovery/DLP, and **Resend** for login-code email.
+> To run with **no outbound internet at all**, see [Fully on-prem](#fully-on-prem-no-outbound-internet)
+> below. For the managed-cloud install, see [runbook.md](runbook.md).
 
 ## Who this is for
 
-On-prem / non-AWS deployments, e.g. a Kubernetes cluster running on Hyper-V or vSphere VMs.
-Tested on a single-node [k3s](https://k3s.io) cluster on an amd64 Ubuntu VM.
+Self-hosted deployments — your own Kubernetes on your own hardware (Hyper-V, vSphere, or bare metal).
+The steps below use a single-node [k3s](https://k3s.io) cluster on an amd64 Ubuntu VM; any conformant
+Kubernetes works the same way.
 
-## Architecture (on-prem)
+## Architecture
 
-Same shape as the AWS deployment (sensors on the endpoints report to one platform running on
-Kubernetes), with the AWS-managed services swapped for on-prem equivalents:
+Same shape as the Cloud profile (sensors on the endpoints report to one platform running on
+Kubernetes), with the managed-cloud services swapped for self-hosted equivalents:
 
-| AWS (default) | On-prem substitute | Status |
+| Cloud profile (managed) | Self-hosted |
+|---|---|
+| EKS (or AKS / GKE) | k3s / RKE2 / any conformant Kubernetes |
+| ECR images (arm64) | GHCR, multi-arch (amd64 + arm64) |
+| RDS Postgres | self-hosted Postgres |
+| S3 object storage | Not required |
+| ALB + ACM + Route 53 | ingress-nginx + internal CA cert + internal DNS |
+| Bedrock (AI models) | still AWS Bedrock, reached over the internet (Fully on-prem turns AI off) |
+| IRSA / workload identity | not needed — no cloud identity binding |
+
+---
+
+## Fully on-prem (no outbound internet)
+
+**Self-hosted** still calls out to AWS Bedrock and Resend. To run with no external calls at all — the
+**Fully on-prem** posture — follow this same runbook, then cut each remaining egress. Know going in
+that two capabilities depend on those external services and aren't available fully isolated today:
+
+| External call | What it's for | Fully on-prem today |
 |---|---|---|
-| EKS | k3s / RKE2 / any conformant Kubernetes | [validated] (k3s) |
-| ECR images (arm64) | GHCR, multi-arch (amd64 + arm64) | [validated] |
-| RDS Postgres | self-hosted Postgres | [validated] |
-| S3 object storage | No longer required (removed upstream) | n/a |
-| ALB + ACM + Route 53 | ingress-nginx + internal CA cert + internal DNS | [validated] (lab: self-signed + hosts file) |
-| Bedrock (AI models) | *no substitute today*; AI features degrade, see Limitations | open |
-| IRSA | not needed off-AWS | n/a |
+| **AWS Bedrock** | AI models behind classification, active discovery, DLP-scan, enrichment | **No substitute.** These features stay off; the proxy still intercepts and regex/allowlist policy rules still match. See [Limitations](#limitations). |
+| **Resend** | emailing sign-in codes | No self-hosted emailer today, so login codes can't be delivered by mail — read the code from Postgres (see [Troubleshooting](#troubleshooting)). SMTP support is planned. |
+| **GHCR** (images) | pulling platform images | Mirror them to an internal registry and set `global.imageRegistry` to it. |
+| **Oryo public bucket** (sensor binaries) | serving sensor installs | Mirror the binaries and point `SENSOR_DOWNLOAD_BASE_URL` at your mirror (§7). |
+
+So Fully on-prem runs the core interception + policy engine with nothing leaving your network, but
+without model-driven AI features or emailed login until those gaps close. Everything else in this
+runbook is identical.
 
 ---
 
@@ -32,7 +52,7 @@ Kubernetes), with the AWS-managed services swapped for on-prem equivalents:
 
 - One or more **amd64** Linux hosts for the cluster (Ubuntu LTS tested).
 - A **Kubernetes cluster**. k3s is shown here; **RKE2** is a good hardened/FIPS-capable choice for production.
-- Internet egress to pull images (or a mirrored registry for air-gap, which this guide doesn't cover).
+- Internet egress to pull images (or an internal registry mirror — see [Fully on-prem](#fully-on-prem-no-outbound-internet)).
 - **GHCR pull credentials** (a token; for customers, a dedicated deploy account; see §2).
 - A **DNS name** you control that the endpoints can resolve, and a **CA the endpoints trust**
   (an internal CA pushed by your MDM/AD works well).
@@ -46,7 +66,7 @@ Kubernetes), with the AWS-managed services swapped for on-prem equivalents:
 
 ---
 
-## 1. Kubernetes cluster  [validated]
+## 1. Kubernetes cluster
 
 Single-node k3s:
 
@@ -70,7 +90,7 @@ kubectl get nodes
 
 ---
 
-## 2. Image access (GHCR)  [validated]
+## 2. Image access (GHCR)
 
 Images live at `ghcr.io/oryo-identity/<service>:<tag>` and are **multi-arch**; Kubernetes
 auto-selects amd64 on amd64 nodes. Optional check (skip it and a failed pull at install time
@@ -102,7 +122,7 @@ the account name; use both exactly as provided.
 
 ## 3. Dependencies
 
-### 3a. Postgres (replaces RDS)  [validated]
+### 3a. Postgres (replaces RDS)
 
 The platform needs a Postgres database it can reach on 5432, with the target database already present.
 The chart's `dbInit` hook creates the per-service roles + schema inside it. Two ways:
@@ -168,11 +188,10 @@ For Option B, point the chart at it with `global.db.host: postgres`.
 
 ### 3b. Object storage (not required)
 
-A recent change removed the platform's dependency on S3 object storage, so no MinIO /
-S3-compatible store is needed on-prem. (If you're on an older chart that still references a
-bucket, upgrade to the release that dropped it.)
+The platform doesn't require S3 object storage, so no MinIO / S3-compatible store is needed
+on-prem.
 
-### 3c. Ingress controller (replaces the ALB)  [validated]
+### 3c. Ingress controller (replaces the ALB)
 
 The chart ships AWS ALB ingress annotations (harmless; nginx ignores them). On-prem you provide the
 ingress controller here. Everything TLS lives in §7: the cert, the ingress wiring, and DNS all touch
@@ -231,10 +250,10 @@ kubectl -n oryo create secret generic oryo-resend-api-key --from-literal=value=<
 
 ---
 
-## 5. Chart overrides for on-prem (`values.custom.yaml`)  [validated]
+## 5. Chart overrides for on-prem (`values.custom.yaml`)
 
-Keep your overrides in a separate file so they carry across upgrades. This is the exact set that
-produced a clean install on k3s:
+Keep your overrides in a separate file so they carry across upgrades. This is the full set for an
+on-prem install:
 
 ```yaml
 global:
@@ -279,7 +298,7 @@ api:
 
 ---
 
-## 6. Install  [validated]
+## 6. Install
 
 ```bash
 helm registry login ghcr.io                    # or the chart's OCI host, with your token
@@ -357,16 +376,17 @@ one-liner; roll out via Intune/MDM). Two platform env vars control this flow:
 
 ---
 
-## Limitations (on-prem, today)
+## Limitations (today)
 
-- **AI features need AWS Bedrock.** Auto-classification, active discovery, DLP scan, parser
-  fallback, and enrichment call Bedrock and have **no on-prem substitute yet**. They degrade
-  silently: the install succeeds and regex/allowlist rules still match, but model-driven features
-  stop producing output. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features).
-- **Ingress:** the chart's ALB annotations need an on-prem swap (§3c).
-- **Login depends on Resend.** Sign-in codes are emailed via Resend (an external SaaS). Compliance-
-  sensitive customers may object to auth emails leaving their network; SMTP/SES support is reportedly
-  on the way. Confirm the customer's stance before go-live.
+- **AI features need AWS Bedrock, reached over the internet.** Even self-hosted, auto-classification,
+  active discovery, DLP scan, parser fallback, and enrichment call AWS Bedrock — there's **no on-prem
+  model substitute yet**. If Bedrock is unreachable (or you're running [Fully on-prem](#fully-on-prem-no-outbound-internet)),
+  they degrade silently: the install succeeds and regex/allowlist rules still match, but model-driven
+  features stop producing output. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features).
+- **Ingress:** the chart's ALB annotations need a self-hosted swap (§3c).
+- **Login depends on Resend.** Sign-in codes are emailed via Resend (an external SaaS), so
+  authentication email leaves your network. If that's a concern for your environment, raise it with
+  your Oryo contact.
 
 ---
 
@@ -386,7 +406,3 @@ one-liner; roll out via Intune/MDM). Two platform env vars control this flow:
 | `GET /install.sh` or `/install.ps1` returns 503 | `SENSOR_DOWNLOAD_BASE_URL` not set, so the deployment has no sensor-binaries source | Set it in `values.custom.yaml` (§5) and upgrade |
 | No email provider in the lab | Resend is stubbed, so the code email never arrives | Pull it straight from Postgres: `SELECT token FROM login_events ORDER BY created_at DESC LIMIT 1;` |
 
----
-
-*Maintained alongside lab validation. As each [planned] section is confirmed end-to-end, update
-its status to [validated] and record what was needed.*
