@@ -1,6 +1,16 @@
 # Oryo Private Deployment
 
-Deploy Oryo in your own AWS account and EKS cluster.
+Deploy Oryo into infrastructure you control. Three profiles:
+
+| Profile | Runs on | External calls | Guide |
+|---|---|---|---|
+| **Cloud** | your cloud account (AWS / Azure / GCP), managed Kubernetes + services | AI (Bedrock), login email (Resend) | [docs/runbook.md](docs/runbook.md) |
+| **Self-hosted** | your own Kubernetes on your own hardware (Hyper-V, vSphere, bare metal) | AI (Bedrock) + login email (Resend), over the internet | [docs/on-prem-runbook.md](docs/on-prem-runbook.md) |
+| **Fully on-prem** | your own hardware, **no outbound internet** | none — AI features (Bedrock-dependent) are off in this mode today; email via your SMTP | [docs/on-prem-runbook.md](docs/on-prem-runbook.md#fully-on-prem-no-outbound-internet) |
+
+The **Cloud** profile below is written end-to-end for AWS (EKS) as a concrete reference; the platform
+runs on any conformant Kubernetes. The one piece that never substitutes is **AWS Bedrock** — every
+profile needs it reachable for AI features, or they stay off.
 
 > Status: early. The install path works end-to-end but is still being hardened across different customer environments. Expect changes before v1.0.
 
@@ -15,9 +25,11 @@ oryo-private-deploy/
 ├── oryo-platform/        ← the Helm chart (Chart.yaml, values.yaml, templates/)
 ├── scripts/verify.sh      ← preflight verifier (creates nothing in AWS)
 ├── docs/
-│   ├── prereqs.md        ← AWS-side prerequisites you provision before install
-│   ├── runbook.md        ← end-to-end install steps + gotchas
-│   ├── intune-deployment.md  ← Windows fleet install via Microsoft Intune
+│   ├── prereqs.md        ← Cloud (AWS) prerequisites you provision before install
+│   ├── runbook.md        ← Cloud install: end-to-end steps + gotchas
+│   ├── on-prem-runbook.md    ← Self-hosted / Fully-on-prem install reference
+│   ├── onprem-deploy-guide.md ← Self-hosted step-by-step walkthrough (Hyper-V)
+│   ├── intune-deployment.md  ← Windows fleet sensor install via Microsoft Intune
 │   └── glossary.md       ← terms + concepts
 ├── .env.example          ← verify.sh inputs
 └── LICENSE.md
