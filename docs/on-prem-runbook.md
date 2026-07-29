@@ -384,6 +384,12 @@ is a full step-by-step. Two platform env vars control this flow:
   model substitute yet**. If Bedrock is unreachable (or you're running [Fully on-prem](#fully-on-prem-no-outbound-internet)),
   they degrade silently: the install succeeds and regex/allowlist rules still match, but model-driven
   features stop producing output. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features).
+- **The exception: ML PII scanning runs fully in-cluster** — the model ships inside the `inference`
+  image, with no external calls, so it works even Fully on-prem. What it needs instead is an **NVIDIA
+  GPU node** (amd64): driver on the host, the NVIDIA device plugin, and the `oryo.io/role: gpu` label +
+  `oryo.io/workload=gpu:NoSchedule` taint — the "Classic managed node groups" path in
+  [inference-gpu.md](inference-gpu.md) applies to any self-hosted cluster. Without a GPU, leave
+  `inference.enabled: false` (the default); PII-scan rules fail open.
 - **Ingress:** the chart's ALB annotations need a self-hosted swap (§3c).
 - **Login depends on Resend.** Sign-in codes are emailed via Resend (an external SaaS), so
   authentication email leaves your network. If that's a concern for your environment, raise it with

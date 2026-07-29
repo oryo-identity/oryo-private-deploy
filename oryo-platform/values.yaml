@@ -170,6 +170,83 @@ gateway:
     user: oryo-gateway
     passwordSecret: { name: oryo-db-gateway, key: password }
 
+# -----------------------------------------------------------------------------
+# Inference: GPU model serving — PII/PHI detection behind the "PII scan" policy
+# function. Optional; requires an NVIDIA GPU node (see docs/inference-gpu.md).
+# When disabled or unready, PII-scan rules skip and requests are allowed
+# (fail-open) — everything else works without it.
+# -----------------------------------------------------------------------------
+inference:
+  enabled: false
+  replicas: 1
+  image:
+    repository: inference
+  containerPort: 3005
+  service:
+    type: ClusterIP
+    port: 80
+  # amd64-only image (CUDA has no arm builds) — overrides the chart-wide arm64 affinity
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values: ['amd64']
+  # match the labels/taints on the GPU NodePool from docs/inference-gpu.md
+  nodeSelector:
+    oryo.io/role: gpu
+  tolerations:
+    - key: oryo.io/workload
+      operator: Equal
+      value: gpu
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: '1'
+      memory: 3Gi
+      nvidia.com/gpu: 1
+    limits:
+      cpu: '2'
+      memory: 4Gi
+      nvidia.com/gpu: 1
+  pdb:
+    enabled: true
+    # minAvailable would block node drains at 1 replica
+    maxUnavailable: 1
+  env: {}
+  # unused by the service — the shared env bootstrap requires DB_* on every pod
+  db:
+    user: oryo-gateway
+    passwordSecret: { name: oryo-db-gateway, key: password }
+  # a pod mid-scan is slow, not dead
+  livenessProbe:
+    httpGet:
+      path: /healthcheck
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 5
+  readinessProbe:
+    httpGet:
+      path: /healthcheck
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # model load can take minutes on first boot
+  startupProbe:
+    httpGet:
+      path: /healthcheck
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 60
+
 workers:
   enabled: true
   image:

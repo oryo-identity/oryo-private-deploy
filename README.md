@@ -18,6 +18,8 @@ profile needs it reachable for AI features, or they stay off.
 
 A Helm chart ([`oryo-platform/`](oryo-platform/)) that runs the Oryo platform (dashboard, gateway, API, workers) inside your EKS cluster. It pulls container images from Oryo's distribution registry and runs against TLS-terminated ingress and a Postgres backend you own.
 
+Optionally, the chart also runs the **GPU inference service** — in-cluster ML PII/PHI detection for DLP policy rules. It's off by default and needs one NVIDIA GPU node; see [docs/inference-gpu.md](docs/inference-gpu.md).
+
 ## Repository layout
 
 ```
@@ -30,6 +32,7 @@ oryo-private-deploy/
 │   ├── on-prem-runbook.md    ← Self-hosted / Fully-on-prem install reference
 │   ├── onprem-deploy-guide.md ← Self-hosted step-by-step walkthrough (Hyper-V)
 │   ├── intune-deployment.md  ← Windows fleet sensor install via Microsoft Intune
+│   ├── inference-gpu.md  ← optional GPU service for ML PII scanning
 │   └── glossary.md       ← terms + concepts
 ├── .env.example          ← verify.sh inputs
 └── LICENSE.md
@@ -51,8 +54,10 @@ flowchart LR
             ALB_GW[gateway.&lt;DOMAIN&gt;]
         end
         PODS["<b>EKS Auto Mode · arm64 pods</b><br/>dashboard · api · gateway · workers"]
+        GPU["<b>GPU node · amd64 · optional</b><br/>inference (ML PII scan)"]
         DATA["<b>Data plane</b><br/>RDS Postgres · S3 object storage"]
         ING --> PODS --> DATA
+        PODS -. PII scans .-> GPU
     end
 
     subgraph EXTDEPS["External dependencies"]
@@ -92,6 +97,7 @@ flowchart LR
     - public-subnet tags
     - dedicated arm64 NodePool
     - Bedrock model access (Claude 3 Haiku + Nova Micro)
+    - (optional) one NVIDIA GPU node for ML PII scanning ([docs/inference-gpu.md](docs/inference-gpu.md))
 - An Oryo-issued GHCR pull token (`read:packages` on `ghcr.io/oryo-identity`), stored as a `docker-registry` secret. Contact your Oryo rep if you don't have one yet.
 
 ## Quick start
