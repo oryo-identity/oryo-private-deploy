@@ -361,7 +361,7 @@ helm rollback oryo --namespace <NAMESPACE>
 
 ## Secret rotation
 
-The chart consumes 6 Kubernetes secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`). Rotating them in production works differently depending on which one, and there are a few Oryo-specific things to watch for. Coordinate the actual key delivery with your secrets store (Vault, AWS Secrets Manager, ESO, etc.). The steps below are what the chart expects.
+The chart consumes 6 Kubernetes secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`), plus the optional `oryo-entra-app-secret` when the [Microsoft Purview DLP integration](#microsoft-purview-dlp-integration-optional) is enabled. Rotating them in production works differently depending on which one, and there are a few Oryo-specific things to watch for. Coordinate the actual key delivery with your secrets store (Vault, AWS Secrets Manager, ESO, etc.). The steps below are what the chart expects.
 
 ### `oryo-session-secret`
 
@@ -415,6 +415,64 @@ kubectl -n $NS run psql-debug --rm -it --restart=Never --image=postgres:15 \
 The pod is ephemeral (`--rm`) and never writes the password to disk. Quit with `\q` and the pod is gone.
 
 > Note: Kubernetes secrets are only base64-encoded in etcd by default, so they aren't encrypted at rest. For production, enable EKS envelope encryption with KMS (see [AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/enable-kms.html)). Without it, anyone with `secrets/get` RBAC can read the plaintext.
+
+---
+
+## Microsoft Purview DLP integration (optional)
+
+Oryo can evaluate agent prompts against your existing Microsoft Purview DLP policies via Microsoft Graph's `processContent` API. You don't rebuild policies in Oryo — your admin scopes an existing (or new) Purview DLP policy to cover Oryo as a protected Entra app location, and Oryo enforces the verdicts on agent traffic.
+
+The feature is off by default. Without the two values below, the platform runs normally and any Purview-backed policy logs a "not configured" warning instead of evaluating.
+
+### 1. Wire the Entra app credentials into the deployment
+
+The Oryo team provides the Entra **app (client) id** and **client secret** for your install.
+
+Create the secret — either add `ORYO_ENTRA_APP_SECRET=` to `.env` and re-run `./scripts/verify.sh --bootstrap-secrets`, or create it directly:
+
+```bash
+kubectl -n <NAMESPACE> create secret generic oryo-entra-app-secret \
+  --from-literal=value='<client-secret>'
+```
+
+Then in `values.custom.yaml`:
+
+```yaml
+global:
+  env:
+    ORYO_ENTRA_APP_ID: '<app-client-id>'
+  externalSecrets:
+    ORYO_ENTRA_APP_SECRET:
+      secretName: oryo-entra-app-secret
+      key: value
+```
+
+Run `helm upgrade`. Both the dashboard (admin consent flow) and the gateway (runtime policy evaluation) consume these values.
+
+Rotation: rotate the client secret in the Entra portal, update `oryo-entra-app-secret`, and restart the dashboard and gateway pods.
+
+### 2. Microsoft-side setup (your M365 tenant admin)
+
+Prerequisites in your Microsoft tenant:
+
+1. **Admin consent.** An admin visits `https://app.<your-domain>/settings/platforms/purview/connect` and grants consent. This creates the Oryo app's service principal in your tenant. Requested permissions: `Content.Process.All`, `ProtectionScopes.Compute.All` (Application).
+2. **Purview pay-as-you-go billing** enabled (Purview portal → "Set up pay-as-you-go billing"). Without it, `processContent` silently returns no policy actions.
+3. **E5 or E5 Compliance licenses** for every user whose traffic is evaluated. Unlicensed users silently no-op.
+4. **A DLP policy scoped directly to the Oryo Entra app** (`LocationSource: Entra`, `LocationType: Individual`). This is the enforcement layer; the Oryo team provides a ready-to-run script.
+
+**Tooling note — it's PowerShell, not the Azure CLI.** The policy-scoping steps run in Exchange Online / Security & Compliance PowerShell (`Connect-IPPSSession` from the `ExchangeOnlineManagement` module). Azure CLI access tokens are rejected by the compliance endpoint, so `az` cannot be used for these steps. The only Azure-portal step is the one-time admin consent above.
+
+This integration pattern is Microsoft's documented, supported path for "Entra-registered AI apps":
+
+- [Use Microsoft Purview for Entra-registered AI apps](https://learn.microsoft.com/en-us/purview/ai-entra-registered) — the umbrella doc; confirms per-app DLP enforcement is configured via a PowerShell cmdlet scoped to the Entra app.
+- [`New-DlpComplianceRule`](https://learn.microsoft.com/en-us/powershell/module/exchange/new-dlpcompliancerule) — Example 4 shows the policy + rule creation scoped to an Entra app.
+- [`processContent` Graph API reference](https://learn.microsoft.com/en-us/graph/api/userdatasecurityandgovernance-processcontent?view=graph-rest-beta) — the runtime API Oryo calls on your behalf.
+
+Constraints to be aware of (current as of July 2026):
+
+- Scoping a DLP policy to a specific Entra app is PowerShell-only — there is no Purview portal UI and no Graph API for it.
+- The Entra app location can only be set **when the policy is created** (`New-DlpCompliancePolicy`). It cannot be added to an existing or portal-created policy with `Set-DlpCompliancePolicy` — the call succeeds but the binding is silently dropped. Plan on a dedicated policy for Oryo traffic.
+- Policy changes can take from a few minutes up to 48 hours to distribute; `Get-DlpCompliancePolicy -DistributionDetail` is the authoritative status.
 
 ---
 
