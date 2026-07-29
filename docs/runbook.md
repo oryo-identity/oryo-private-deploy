@@ -163,6 +163,23 @@ Override at least these:
 - `dbInit.defaultTenant`: your org name and owner email.
 - `global.env.ENV_NAME`: must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
 
+### Cloud partition and endpoint overrides (optional)
+
+Every provider endpoint the platform calls is env-driven with a commercial-cloud default, so a standard AWS + Microsoft commercial deployment needs none of these. Set them under `global.env` when your deployment lives in a different cloud partition (AWS GovCloud, Azure Government, or a sovereign/custom cloud). Values left empty in `values.yaml` are dropped from the pods and the in-app defaults apply.
+
+| Variable | In-app default | Set when |
+| --- | --- | --- |
+| `AWS_REGION` | `us-east-1` (on EKS, IRSA injects the cluster's region automatically) | Off-EKS installs, or GovCloud (e.g. `us-gov-west-1`). Credentials are partition-scoped — GovCloud creds are rejected by commercial endpoints, so this must match your partition. |
+| `AWS_S3_SUFFIX` | `s3.amazonaws.com` | Your partition uses a different S3 endpoint suffix. |
+| `MICROSOFT_AUTHORITY` | `https://login.microsoftonline.com` | Azure Government: `https://login.microsoftonline.us`. |
+| `MICROSOFT_GRAPH` | `https://graph.microsoft.com` | Azure Government: `https://graph.microsoft.us`. |
+| `MICROSOFT_ARM` | `https://management.azure.com` | Azure Government: `https://management.usgovcloudapi.net`. |
+| `MICROSOFT_COGNITIVE_SUFFIX` | `cognitiveservices.azure.com` | Azure Government: `cognitiveservices.azure.us`. |
+| `MICROSOFT_AI_FOUNDRY` | `https://ai.azure.com` | Your cloud's AI Foundry endpoint. |
+| `DEFAULT_LLM` | Claude 3 Haiku (`anthropic.claude-3-haiku-20240307-v1:0`) | Your partition doesn't serve that model ID — set a model or inference-profile ID enabled in your account (GovCloud profiles carry a `us-gov.` prefix). |
+
+The endpoint URLs are validated by shape only (must be well-formed URLs), so custom/sovereign clouds beyond the examples above work too.
+
 ## 4. Install from the registry
 
 The chart is published to Oryo's registry as a versioned OCI artifact. The `oci://` URL and `<version>` are in each [GitHub Release](https://github.com/oryo-identity/oryo-private-deploy/releases), along with the image digests you can check against later.
