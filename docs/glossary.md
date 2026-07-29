@@ -59,7 +59,21 @@ The CA private key stays server-side, and only leaf certs go to devices.
 
 Oryo's container images live in Oryo's GitHub Container Registry (`ghcr.io/oryo-identity`). Your cluster pulls them with a read-only token, which works on any Kubernetes, on-prem included.
 
-Oryo issues you a token with `read:packages` scoped to `oryo-identity`, along with the GitHub account name it was issued under (the docker-registry username). You store both as a `docker-registry` secret (conventionally `ghcr-pull`) in the release namespace and reference it in `global.imagePullSecrets`. The token covers `api`, `dashboard`, `gateway`, `workers`, and `db-init`.
+Oryo issues you a token with `read:packages` scoped to `oryo-identity`, along with the GitHub account name it was issued under (the docker-registry username). You store both as a `docker-registry` secret (conventionally `ghcr-pull`) in the release namespace and reference it in `global.imagePullSecrets`. The token covers `api`, `dashboard`, `gateway`, `workers`, `db-init`, and `inference`.
+
+---
+
+### `inference` service (GPU)
+
+Optional in-cluster model-serving service behind the **PII scan** policy function: a GLiNER-based PII/PHI detector that scans prompts and files inline as they pass through the gateway. GPU-only by design — inline scanning has a latency budget of a couple hundred milliseconds, which a CPU misses by orders of magnitude, so a pod without a working GPU never becomes Ready rather than serving slow scans.
+
+The model is baked into the image (no runtime download, no external calls), the service is ClusterIP-only, and the chart wires `ORYO_INFERENCE_URL` into the gateway automatically when `inference.enabled: true`. See [inference-gpu.md](inference-gpu.md).
+
+---
+
+### Fail-open (PII scan)
+
+The PII scan policy function's degradation mode: if the inference service is disabled, still loading, or unreachable, the gateway logs `pii_scan skipped, request allowed (fail-open)` and lets the request through. A scanning outage must never take down AI traffic. Other policy rules on the same request still apply — only PII-scan rules go inactive. The same philosophy as [Bedrock-dependent features](runbook.md#bedrock-dependent-features) degrading silently, but with no Bedrock involved.
 
 ---
 

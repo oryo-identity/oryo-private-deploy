@@ -1,6 +1,6 @@
-{{- if .Values.gateway.enabled -}}
-{{- $component := "gateway" -}}
-{{- $svc := .Values.gateway -}}
+{{- if .Values.inference.enabled -}}
+{{- $component := "inference" -}}
+{{- $svc := .Values.inference -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,15 +8,15 @@ metadata:
   labels:
     {{- include "oryo.componentLabels" (list . $component) | nindent 4 }}
 spec:
-  {{- if not $svc.autoscaling.enabled }}
   replicas: {{ $svc.replicas }}
-  {{- end }}
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      # replace in place — a surge pod would need a second GPU node per deploy;
+      # brief unreadiness is fine, pii_scan fails open
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       {{- include "oryo.componentSelectorLabels" (list . $component) | nindent 6 }}
@@ -45,10 +45,6 @@ spec:
               protocol: TCP
           env:
             {{- include "oryo.serviceEnv" (list . $svc $component) | nindent 12 }}
-            {{- if and .Values.inference.enabled (not (hasKey ($svc.env | default dict) "ORYO_INFERENCE_URL")) }}
-            - name: ORYO_INFERENCE_URL
-              value: "http://{{ include "oryo.componentName" (list . "inference") }}"
-            {{- end }}
           {{- with $svc.startupProbe }}
           {{- if . }}
           startupProbe:
