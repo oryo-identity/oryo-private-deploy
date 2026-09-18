@@ -56,6 +56,7 @@ These need to exist before you start. The install kit doesn't create anything in
 | Postgres database | RDS recommended. Reachable from the cluster VPC on port 5432. The target database must exist (the default `postgres` works); see [docs/prereqs.md §6](prereqs.md). |
 | Domain, Route 53 zone, ACM cert | A Route 53 hosted zone for your domain in the same AWS account, and a wildcard ACM cert for `*.<your-domain>` in the cluster's region, in status `ISSUED`. See [docs/prereqs.md §7](prereqs.md). |
 | Oryo GHCR pull token | Oryo issues a read-only token for `ghcr.io/oryo-identity`. Store it as a `docker-registry` secret (`ghcr-pull`) and set `global.imagePullSecrets`. Contact your Oryo rep if you don't have one yet. |
+| GPU node (optional) | Only if you enable PII scanning: one NVIDIA GPU node (for example `g4dn.xlarge`) in a dedicated NodePool. See [docs/inference-gpu.md](inference-gpu.md). Without it, PII scan rules stay inactive. |
 
 `verify.sh` checks all of the above and can optionally bootstrap the in-cluster Kubernetes secrets. `helm install` does the rest.
 
@@ -161,6 +162,7 @@ Override at least these:
 - `alb.ingress.kubernetes.io/certificate-arn`: the ACM cert ARN from prereqs (all 3 ingresses use it).
 - Ingress hostnames: `app.<DOMAIN>`, `gateway.<DOMAIN>`, `api.<DOMAIN>`.
 - `dbInit.defaultTenant`: your org name and owner email.
+- `inference.enabled`: set to `true` only if you have a GPU node and want PII scanning ([docs/inference-gpu.md](inference-gpu.md)).
 - `global.env.ENV_NAME`: must be one of `local | dev | stage | prod` (Zod enum). Set this to `stage` for every private-deploy install. `stage` is the private-deploy value. It's how the platform tells customer-managed clusters apart from Oryo's own infrastructure, which lets us add per-environment behavior (telemetry sampling, alert routing, opt-in features) without affecting either side. `prod` is reserved for Oryo's own SaaS.
 
 ### Cloud partition and endpoint overrides (optional)
@@ -476,6 +478,16 @@ Constraints to be aware of (current as of July 2026):
 
 ---
 
+## GPU inference service for PII scanning (optional)
+
+The PII scan policy function detects PII and PHI in prompts and files by content rather than by regex. The model runs on the in-cluster `inference` service, which needs one NVIDIA GPU node and is off by default.
+
+Setup is two steps: provision a GPU NodePool, then set `inference.enabled: true` and run `helm upgrade`. [docs/inference-gpu.md](inference-gpu.md) covers it end to end, including sizing, cost, verification, and troubleshooting.
+
+Like Bedrock, it degrades silently. When the service is disabled, unready, or unreachable, the gateway logs `pii_scan skipped, request allowed (fail-open)` and lets the request through. Other policy rules on the same request still apply. Unlike Bedrock, the model runs entirely in the cluster, so PII scanning also works in air-gapped installs that have a GPU.
+
+---
+
 ## Gotchas
 
 Standard AWS, Kubernetes, and Helm gotchas (wrong-account SSO, ACM stuck in `PENDING_VALIDATION`, RDS security-group reachability for `dbInit`, etc.) aren't repeated here. These are the Oryo-specific ones that have actually tripped people up:
@@ -497,6 +509,8 @@ Several gateway and worker code paths call Bedrock (Claude 3 Haiku for classific
 | Worker classification jobs (`tool-classification`, `tool-use-classification`, prompt classification) | Throws inside `pMap`; tool uses and prompts stay untagged. The dashboard shows raw conversations with no category badges. |
 | Parser fallback | Deterministic parsing still works; when it can't parse, the prompt renders raw instead of structured. |
 | Enricher | Enrichment metadata is absent. |
+
+The PII scan policy function is not on this list. It does not use Bedrock. It runs on the in-cluster [GPU inference service](#gpu-inference-service-for-pii-scanning-optional) and also fails open.
 
 Two failure modes show up the same way in the dashboard (tags and discovery both go missing) but they have different causes:
 - IAM: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel`. Fix the IRSA policy ([docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa-for-s3--bedrock)).

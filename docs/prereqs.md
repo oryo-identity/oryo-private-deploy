@@ -259,4 +259,10 @@ Then add the DNS-validation CNAME that ACM gives you to your Route 53 zone. ACM 
 
 ---
 
-When all of the above exist, run `./scripts/verify.sh`. It checks each one and tells you what's missing if anything isn't ready.
+## 8. GPU node for PII scanning (optional)
+
+Only needed if you enable the inference service: one amd64 NVIDIA GPU node (`g4dn.xlarge` is the baseline), labeled `oryo.io/role: gpu` and tainted `oryo.io/workload=gpu:NoSchedule`, provisioned as a dedicated NodePool like the arm64 one in §4. The NodePool spec, the classic node group alternative, sizing, and cost are in [docs/inference-gpu.md](inference-gpu.md). `verify.sh` does not check this one.
+
+---
+
+When all of the above exist, run `./scripts/verify.sh`. It checks each one (except the optional §8) and tells you what's missing if anything isn't ready.

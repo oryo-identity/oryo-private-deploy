@@ -59,7 +59,19 @@ The CA private key stays server-side, and only leaf certs go to devices.
 
 Oryo's container images live in Oryo's GitHub Container Registry (`ghcr.io/oryo-identity`). Your cluster pulls them with a read-only token, which works on any Kubernetes, on-prem included.
 
-Oryo issues you a token with `read:packages` scoped to `oryo-identity`, along with the GitHub account name it was issued under (the docker-registry username). You store both as a `docker-registry` secret (conventionally `ghcr-pull`) in the release namespace and reference it in `global.imagePullSecrets`. The token covers `api`, `dashboard`, `gateway`, `workers`, and `db-init`.
+Oryo issues you a token with `read:packages` scoped to `oryo-identity`, along with the GitHub account name it was issued under (the docker-registry username). You store both as a `docker-registry` secret (conventionally `ghcr-pull`) in the release namespace and reference it in `global.imagePullSecrets`. The token covers `api`, `dashboard`, `gateway`, `workers`, `db-init`, and `inference`.
+
+---
+
+### `inference` service (GPU)
+
+Optional in-cluster service behind the PII scan policy function. It detects PII and PHI in prompts and files as they pass through the gateway. It needs a GPU: a pod without one never becomes Ready. The model ships inside the image, the service is ClusterIP only, and the chart sets `ORYO_INFERENCE_URL` on the gateway when `inference.enabled: true`. See [inference-gpu.md](inference-gpu.md).
+
+---
+
+### Fail-open (PII scan)
+
+If the inference service is disabled, still loading, or unreachable, the gateway logs `pii_scan skipped, request allowed (fail-open)` and lets the request through. Other policy rules on the same request still apply. This is the same approach as [Bedrock-dependent features](runbook.md#bedrock-dependent-features) degrading silently.
 
 ---
 

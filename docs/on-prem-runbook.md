@@ -384,6 +384,10 @@ is a full step-by-step. Two platform env vars control this flow:
   model substitute yet**. If Bedrock is unreachable (or you're running [Fully on-prem](#fully-on-prem-no-outbound-internet)),
   they degrade silently: the install succeeds and regex/allowlist rules still match, but model-driven
   features stop producing output. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features).
+- **PII scanning is the exception.** The model ships inside the `inference` image and makes no
+  external calls, so it works fully on-prem. It needs an amd64 node with an NVIDIA GPU, the driver on
+  the host, the NVIDIA device plugin, and the label and taint from [inference-gpu.md](inference-gpu.md).
+  Without a GPU, leave `inference.enabled: false` and PII scan rules fail open.
 - **Ingress:** the chart's ALB annotations need a self-hosted swap (§3c).
 - **Login depends on Resend.** Sign-in codes are emailed via Resend (an external SaaS), so
   authentication email leaves your network. If that's a concern for your environment, raise it with
