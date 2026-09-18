@@ -8,7 +8,6 @@ metadata:
   labels:
     {{- include "oryo.componentLabels" (list . $component) | nindent 4 }}
 spec:
-  # maxUnavailable, not minAvailable — minAvailable would block node drains at 1 replica
   maxUnavailable: {{ $svc.pdb.maxUnavailable }}
   selector:
     matchLabels:

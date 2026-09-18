@@ -259,11 +259,9 @@ Then add the DNS-validation CNAME that ACM gives you to your Route 53 zone. ACM 
 
 ---
 
-## 8. GPU node for ML PII scanning (optional)
+## 8. GPU node for PII scanning (optional)
 
-Only needed if you enable the inference service (`inference.enabled: true`): one NVIDIA GPU node (baseline `g4dn.xlarge`), amd64, labeled `oryo.io/role: gpu` and tainted `oryo.io/workload=gpu:NoSchedule`. Provisioned as a dedicated NodePool, same pattern as the arm64 one in §4.
-
-The NodePool spec, the classic-node-group alternative, sizing, and cost live in [docs/inference-gpu.md](inference-gpu.md). `verify.sh` doesn't check this one — the runbook there covers verification.
+Only needed if you enable the inference service: one amd64 NVIDIA GPU node (`g4dn.xlarge` is the baseline), labeled `oryo.io/role: gpu` and tainted `oryo.io/workload=gpu:NoSchedule`, provisioned as a dedicated NodePool like the arm64 one in §4. The NodePool spec, the classic node group alternative, sizing, and cost are in [docs/inference-gpu.md](inference-gpu.md). `verify.sh` does not check this one.
 
 ---
 

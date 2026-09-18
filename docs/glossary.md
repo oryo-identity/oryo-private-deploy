@@ -65,15 +65,13 @@ Oryo issues you a token with `read:packages` scoped to `oryo-identity`, along wi
 
 ### `inference` service (GPU)
 
-Optional in-cluster model-serving service behind the **PII scan** policy function: a GLiNER-based PII/PHI detector that scans prompts and files inline as they pass through the gateway. GPU-only by design — inline scanning has a latency budget of a couple hundred milliseconds, which a CPU misses by orders of magnitude, so a pod without a working GPU never becomes Ready rather than serving slow scans.
-
-The model is baked into the image (no runtime download, no external calls), the service is ClusterIP-only, and the chart wires `ORYO_INFERENCE_URL` into the gateway automatically when `inference.enabled: true`. See [inference-gpu.md](inference-gpu.md).
+Optional in-cluster service behind the PII scan policy function. It detects PII and PHI in prompts and files as they pass through the gateway. It needs a GPU: a pod without one never becomes Ready. The model ships inside the image, the service is ClusterIP only, and the chart sets `ORYO_INFERENCE_URL` on the gateway when `inference.enabled: true`. See [inference-gpu.md](inference-gpu.md).
 
 ---
 
 ### Fail-open (PII scan)
 
-The PII scan policy function's degradation mode: if the inference service is disabled, still loading, or unreachable, the gateway logs `pii_scan skipped, request allowed (fail-open)` and lets the request through. A scanning outage must never take down AI traffic. Other policy rules on the same request still apply — only PII-scan rules go inactive. The same philosophy as [Bedrock-dependent features](runbook.md#bedrock-dependent-features) degrading silently, but with no Bedrock involved.
+If the inference service is disabled, still loading, or unreachable, the gateway logs `pii_scan skipped, request allowed (fail-open)` and lets the request through. Other policy rules on the same request still apply. This is the same approach as [Bedrock-dependent features](runbook.md#bedrock-dependent-features) degrading silently.
 
 ---
 

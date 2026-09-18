@@ -170,12 +170,7 @@ gateway:
     user: oryo-gateway
     passwordSecret: { name: oryo-db-gateway, key: password }
 
-# -----------------------------------------------------------------------------
-# Inference: GPU model serving — PII/PHI detection behind the "PII scan" policy
-# function. Optional; requires an NVIDIA GPU node (see docs/inference-gpu.md).
-# When disabled or unready, PII-scan rules skip and requests are allowed
-# (fail-open) — everything else works without it.
-# -----------------------------------------------------------------------------
+# optional PII scanning; needs an NVIDIA GPU node (docs/inference-gpu.md)
 inference:
   enabled: false
   replicas: 1
@@ -185,7 +180,7 @@ inference:
   service:
     type: ClusterIP
     port: 80
-  # amd64-only image (CUDA has no arm builds) — overrides the chart-wide arm64 affinity
+  # amd64-only image; overrides the chart-wide arm64 affinity
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -194,7 +189,6 @@ inference:
               - key: kubernetes.io/arch
                 operator: In
                 values: ['amd64']
-  # match the labels/taints on the GPU NodePool from docs/inference-gpu.md
   nodeSelector:
     oryo.io/role: gpu
   tolerations:
@@ -216,11 +210,10 @@ inference:
     # minAvailable would block node drains at 1 replica
     maxUnavailable: 1
   env: {}
-  # unused by the service — the shared env bootstrap requires DB_* on every pod
+  # unused; the shared env bootstrap requires DB_* on every pod
   db:
     user: oryo-gateway
     passwordSecret: { name: oryo-db-gateway, key: password }
-  # a pod mid-scan is slow, not dead
   livenessProbe:
     httpGet:
       path: /healthcheck

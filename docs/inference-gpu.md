@@ -1,16 +1,14 @@
 # GPU inference service (PII scanning)
 
-How to spin up the optional `inference` service in a private deployment. It serves the ML model behind the **PII scan** policy function: a GLiNER-based PII/PHI detector that scans prompts and files inline, as they pass through the gateway.
+The optional `inference` service runs the model behind the PII scan policy function. It detects PII and PHI in prompts and files by content, inline, as they pass through the gateway.
 
-It is the one component with special hardware needs — everything else in the chart runs on the arm64 pool, this runs on a single NVIDIA GPU node. It's disabled by default (`inference.enabled: false`), and the platform is fully functional without it: PII-scan policy rules simply don't fire (see [Fail-open behavior](#fail-open-behavior)). Enable it when you want DLP rules that detect PII/PHI by content rather than by regex.
-
----
+It is off by default (`inference.enabled: false`) and is the only component that needs special hardware: one amd64 node with an NVIDIA GPU. Everything else in the chart runs on the arm64 pool. Without it the platform works normally and PII scan rules simply do not fire (see [Fail-open behavior](#fail-open-behavior)).
 
 ## Why a GPU
 
-PII scanning runs inline: the gateway holds the intercepted request while the model scans it, so the scan budget is a couple hundred milliseconds. On a T4 GPU a 250-word scan completes in about 80 ms (p95); the same scan on CPU takes several seconds — orders of magnitude past the budget. There is deliberately **no CPU fallback**: a pod without a GPU never becomes Ready rather than silently serving 30× slower scans.
+The gateway holds the intercepted request while the model scans it, so a scan has a budget of a few hundred milliseconds. On a T4 GPU a 250-word scan takes about 80 ms. On CPU the same scan takes several seconds. There is no CPU fallback: a pod without a working GPU never becomes Ready.
 
-Measured on `g4dn.xlarge` (NVIDIA T4), real model artifact:
+Measured on `g4dn.xlarge` (NVIDIA T4):
 
 | Input size | GPU | CPU (same box) |
 |---|---|---|
@@ -18,25 +16,22 @@ Measured on `g4dn.xlarge` (NVIDIA T4), real model artifact:
 | 80 words | 23 ms | 2.2 s |
 | 250 words (file chunk) | 79 ms | 5.7 s |
 
-Model load takes ~5 s at boot, VRAM footprint is ~3.5 GB, and throughput is ~12 scans/s serialized. One `g4dn.xlarge` (~$0.53/hr on-demand in us-east-1) is the sizing baseline; any NVIDIA instance of the g4dn/g5/g6 families with ≥4 GB VRAM works.
+Model load takes about 5 s at boot, VRAM use is about 3.5 GB, and throughput is about 12 scans/s. One `g4dn.xlarge` is the sizing baseline. Any NVIDIA instance in the g4dn, g5, or g6 families with at least 4 GB VRAM works.
 
-## What you'll set up
+## What you will set up
 
-1. A GPU NodePool (or node group) — one amd64 NVIDIA node, labeled and tainted for this workload.
+1. A GPU NodePool or node group: one amd64 NVIDIA node, labeled and tainted for this workload.
 2. `inference.enabled: true` in `values.custom.yaml`, then `helm upgrade`.
-3. Nothing else — the chart wires the gateway to the service automatically, and the model is baked into the image (no model download, no extra S3 access).
 
-The image is pulled with the same Oryo GHCR token as the rest of the platform. Note it is much larger than the other images (several GB — CUDA runtime plus the embedded model), so the first pull takes a few minutes.
-
----
+The chart wires the gateway to the service. The model ships inside the image, so there is no model download and no extra S3 access. The image uses the same GHCR pull token as the rest of the platform. It is several GB (CUDA runtime plus the model), so the first pull takes a few minutes.
 
 ## 1. Provide a GPU node
 
-The inference pod schedules onto nodes carrying the label `oryo.io/role: gpu` and tolerates the taint `oryo.io/workload=gpu:NoSchedule`. The taint keeps general workloads off the (expensive) GPU node; the label and an amd64 affinity keep the pod off your arm64 pool. You create a node source that matches.
+The inference pod schedules onto nodes labeled `oryo.io/role: gpu` and tolerates the taint `oryo.io/workload=gpu:NoSchedule`. The taint keeps other workloads off the GPU node. The label and an amd64 affinity keep the pod off the arm64 pool.
 
 ### EKS Auto Mode (recommended)
 
-Create a dedicated NodePool, same pattern as the `oryo-arm64` one from [prereqs.md §4](prereqs.md):
+Create a dedicated NodePool, same pattern as `oryo-arm64` in [prereqs.md §4](prereqs.md):
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -76,18 +71,15 @@ spec:
 EOF
 ```
 
-Auto Mode's GPU-capable AMIs ship the NVIDIA driver and device plugin — you don't install anything for `nvidia.com/gpu` to be schedulable. The `limits.nvidia.com/gpu: "1"` cap is a cost guard: this NodePool can never scale past one GPU. Raise it if you later run more replicas.
+Auto Mode GPU AMIs include the NVIDIA driver and device plugin, so nothing else is needed for `nvidia.com/gpu` to be schedulable. The `limits.nvidia.com/gpu: "1"` cap keeps this NodePool at one GPU. Raise it if you run more replicas.
 
-No node appears when you apply this — Karpenter provisions the instance on demand, when the inference pod first goes Pending (2–3 minutes).
+No node appears when you apply this. Karpenter provisions the instance when the inference pod first goes Pending, which takes 2 to 3 minutes.
 
 ### Classic managed node groups
 
-Without Auto Mode you need three things the Auto Mode path gives you for free:
+Without Auto Mode you need three things:
 
-1. A node group with a GPU AMI (driver included) and the same label + taint:
-   - AMI type: `AL2023_x86_64_NVIDIA`
-   - Instance type: `g4dn.xlarge`
-   - Label `oryo.io/role: gpu`, taint `oryo.io/workload=gpu:NoSchedule`
+1. A node group with a GPU AMI (`AL2023_x86_64_NVIDIA`), instance type `g4dn.xlarge`, the label `oryo.io/role: gpu`, and the taint `oryo.io/workload=gpu:NoSchedule`.
 2. The [NVIDIA device plugin](https://github.com/NVIDIA/k8s-device-plugin), which advertises `nvidia.com/gpu` to the scheduler:
    ```bash
    helm repo add nvdp https://nvidia.github.io/k8s-device-plugin
@@ -95,12 +87,12 @@ Without Auto Mode you need three things the Auto Mode path gives you for free:
      --namespace kube-system \
      --set-json 'tolerations=[{"key":"oryo.io/workload","operator":"Exists","effect":"NoSchedule"},{"key":"nvidia.com/gpu","operator":"Exists","effect":"NoSchedule"}]'
    ```
-   The extra toleration matters: the plugin's default only tolerates the `nvidia.com/gpu` taint, so without it the plugin DaemonSet can't land on the tainted GPU node and the node never advertises a GPU.
-3. If you run the cluster autoscaler with the group scaled to zero, tag the ASG so a pending GPU pod can scale it up (`k8s.io/cluster-autoscaler/enabled`, plus the taint/label resource tags).
+   The extra toleration matters. The plugin only tolerates the `nvidia.com/gpu` taint by default, so without it the plugin never lands on the tainted node and the node never advertises a GPU.
+3. If you run the cluster autoscaler with the group scaled to zero, tag the ASG so a pending GPU pod can scale it up.
 
-### Self-hosted / on-prem clusters
+### Self-hosted clusters
 
-The classic path above generalizes to any Kubernetes ([on-prem-runbook.md](on-prem-runbook.md)): an amd64 node with an NVIDIA GPU, the NVIDIA driver on the host, the device plugin (step 2), and the same label + taint applied with `kubectl label node` / `kubectl taint node`. Unlike the Bedrock-backed AI features, PII scanning makes no external calls — the model ships inside the image — so it works in Fully on-prem installs (mirror the `inference` image like the others).
+The classic path applies to any Kubernetes ([on-prem-runbook.md](on-prem-runbook.md)): an amd64 node with an NVIDIA GPU, the driver on the host, the device plugin, and the same label and taint applied with `kubectl label node` and `kubectl taint node`. PII scanning makes no external calls, so it works in fully on-prem installs. Mirror the `inference` image like the others.
 
 ## 2. Enable the service
 
@@ -121,15 +113,15 @@ helm upgrade --install oryo \
   --atomic --cleanup-on-fail --wait --timeout 15m
 ```
 
-Bump the timeout for this first upgrade: it covers GPU node provisioning (2–3 min) plus the large image pull (a few minutes).
+Use the longer timeout for this first upgrade. It covers GPU node provisioning plus the large image pull.
 
-Enabling the flag does two things: deploys the inference Deployment/Service (ClusterIP-only, never exposed via ingress), and injects `ORYO_INFERENCE_URL` into the gateway pointing at the in-cluster service. If you need to point the gateway elsewhere (e.g. a shared GPU cluster), set `gateway.env.ORYO_INFERENCE_URL` yourself — the chart then leaves it alone.
+Enabling the flag deploys the inference Deployment and Service (ClusterIP only, never exposed through ingress) and sets `ORYO_INFERENCE_URL` on the gateway to the in-cluster service. To point the gateway somewhere else, set `gateway.env.ORYO_INFERENCE_URL` yourself and the chart leaves it alone.
 
-Defaults you can override under `inference:` (see the chart's `values.yaml` for the full list): 1 replica, `Guaranteed`-ish resources (1–2 CPU / 3–4 Gi / 1 GPU), a startup probe that allows ~5 minutes for model load, and a rolling-update strategy of `maxSurge: 0` — an upgrade replaces the pod in place instead of requiring a second GPU node.
+Defaults under `inference:` in the chart's `values.yaml`: 1 replica, 1 to 2 CPU, 3 to 4 Gi memory, 1 GPU, a startup probe that allows about 5 minutes for model load, and an in-place rolling update so an upgrade never needs a second GPU node.
 
 ### Optional: shared auth token
 
-The service is ClusterIP-only, so the network is the gate by default. To also require a bearer token (e.g. under stricter network policies), set the same value on both sides:
+The service is ClusterIP only, so the network is the gate by default. To also require a bearer token, set the same value on both sides:
 
 ```yaml
 gateway:
@@ -142,13 +134,13 @@ inference:
 
 ## 3. Verify
 
-Watch the rollout — expect `0/1 Running` for a bit while the model loads (the healthcheck returns 503 until the model is ready; the pod is never Ready while unable to scan):
+Watch the rollout. Expect `0/1 Running` while the model loads. The healthcheck returns 503 until the model is ready.
 
 ```bash
 kubectl -n <NAMESPACE> get pods -l app.kubernetes.io/component=inference -w
 ```
 
-Once Ready, smoke-test the scan endpoint from your machine:
+Once Ready, test the scan endpoint:
 
 ```bash
 kubectl -n <NAMESPACE> port-forward svc/oryo-oryo-platform-inference 8080:80 &
@@ -157,39 +149,39 @@ curl -s localhost:8080/healthcheck
 curl -s -X POST localhost:8080/v1/detect \
   -H 'content-type: application/json' \
   -d '{"text":"Contact Maria Alvarez at maria.alvarez@example.com or 555-0142.","labels":["first_name","last_name","email","phone_number"]}'
-# {"detections":[...email + name + phone hits...],"scanned":1,"total":1,"incomplete":false}
+# {"detections":[...],"scanned":1,"total":1,"incomplete":false}
 ```
 
-Then use it from the dashboard: create a policy rule with the **PII scan** function (pick the PII types to detect — presets exist for GDPR special categories and PHI), send a prompt containing PII through a monitored AI endpoint, and confirm the violation appears.
+Then try it from the dashboard: create a policy rule with the PII scan function, pick the PII types to detect, send a prompt containing PII through a monitored AI endpoint, and confirm the violation appears.
 
 ## Fail-open behavior
 
-PII scanning fails open by design: if the service is disabled, unready, or unreachable, the gateway logs a warning and **allows the request** — a scanning outage must not take down AI traffic. Other policy rules on the same request still apply.
+If the service is disabled, still loading, or unreachable, the gateway logs a warning and allows the request. A scanning outage never blocks AI traffic. Other policy rules on the same request still apply.
 
-What that looks like in gateway logs when scans are being skipped:
+The gateway log line when scans are skipped:
 
 ```
 pii_scan skipped, request allowed (fail-open): inference service unreachable at http://...
 ```
 
-If you see this while the inference pod claims to be Ready, check the gateway's `ORYO_INFERENCE_URL` matches the service name in your namespace.
+If you see this while the inference pod is Ready, check that the gateway's `ORYO_INFERENCE_URL` matches the service name in your namespace.
 
-Consequences worth knowing:
+Two consequences:
 
-- During an upgrade or node drain there's a brief window (model load, ~1 min on a warm node) where scans are skipped. With 1 replica that's accepted; run 2 replicas on 2 GPU nodes if you need scan continuity.
-- Scans are bounded (default: 8 chunks / 5 s per request). Oversized files are partially scanned and flagged `incomplete`; the PII-scan rule's "Flag Partially Checked Files" option (on by default) controls whether that counts as a risk.
+- During an upgrade or node drain there is a short window (model load, about a minute on a warm node) where scans are skipped. Run 2 replicas on 2 GPU nodes if you need continuity.
+- Scans are bounded (default 8 chunks or 5 s per request). Oversized files are partially scanned and flagged `incomplete`. The rule's "Flag Partially Checked Files" option, on by default, controls whether that counts as a risk.
 
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| Pod `Pending`, no node appears | No node source matches: NodePool/node group missing, or missing the `oryo.io/role: gpu` label. Check `kubectl describe pod` events. |
-| Pod `Pending` on a running GPU node | `nvidia.com/gpu` not advertised: `kubectl describe node <gpu-node> \| grep nvidia` shows no capacity → device plugin missing or not tolerating the taint (classic node groups, see §1). |
-| `ImagePullBackOff` | Same GHCR token/secret as other services — if only inference fails, your token predates the service; ask Oryo for a refreshed one. Also: slow first pull is normal (several GB), distinguish from a real failure. |
-| Ready never reached, healthcheck 503 forever | The pod has a GPU but the CUDA session failed — `kubectl logs` will show the ORT error. Most common on classic node groups with a non-NVIDIA AMI (no driver). |
-| Scans return 429 `scan queue full` | Sustained load beyond one GPU's throughput (~12 scans/s). Add a replica + GPU node. |
-| Rules never fire, no warnings | The PII-scan rule has no PII types selected — nothing is selected by default; pick types or a preset in the rule editor. |
+| Pod `Pending`, no node appears | No node source matches. The NodePool or node group is missing, or lacks the `oryo.io/role: gpu` label. Check `kubectl describe pod` events. |
+| Pod `Pending` on a running GPU node | `nvidia.com/gpu` is not advertised. If `kubectl describe node <gpu-node> \| grep nvidia` shows no capacity, the device plugin is missing or not tolerating the taint. |
+| `ImagePullBackOff` | If only inference fails, your pull token predates the service. Ask Oryo for a new one. A slow first pull is normal. |
+| Never Ready, healthcheck 503 | The pod has a GPU but the CUDA session failed. `kubectl logs` shows the error. Usually a non-NVIDIA AMI on a classic node group. |
+| Scans return 429 `scan queue full` | Load beyond one GPU. Add a replica and a GPU node. |
+| Rules never fire, no warnings | The PII scan rule has no PII types selected. Pick types or a preset in the rule editor. |
 
 ## Cost
 
-The single default node is the entire marginal cost: one `g4dn.xlarge` on-demand ≈ **$0.53/hr (~$385/mo)** in us-east-1. There is no per-scan cost — the model runs on your node. Scale-to-zero isn't supported by the service itself (the pod holds the model resident); to stop paying, set `inference.enabled: false` and delete the NodePool.
+One `g4dn.xlarge` on demand is about $0.53/hr (about $385/mo) in us-east-1. There is no per-scan cost. The pod holds the model resident, so it does not scale to zero. To stop paying, set `inference.enabled: false` and delete the NodePool.
