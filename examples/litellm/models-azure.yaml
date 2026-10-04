@@ -1,0 +1,18 @@
+# secret: AZURE_API_KEY, AZURE_API_BASE, AZURE_API_VERSION
+model_list:
+  - model_name: oryo-default
+    litellm_params:
+      model: azure/<your-small-model-deployment>
+      api_base: os.environ/AZURE_API_BASE
+      api_version: os.environ/AZURE_API_VERSION
+      api_key: os.environ/AZURE_API_KEY
+  - model_name: oryo-smart
+    litellm_params:
+      model: azure/<your-large-model-deployment>
+      api_base: os.environ/AZURE_API_BASE
+      api_version: os.environ/AZURE_API_VERSION
+      api_key: os.environ/AZURE_API_KEY
+litellm_settings:
+  drop_params: true
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

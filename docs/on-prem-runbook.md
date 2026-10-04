@@ -1,8 +1,9 @@
 # Oryo Deployment Runbook — Self-hosted
 
 > The **Self-hosted** profile runs Oryo on your own Kubernetes cluster and your own hardware — no
-> managed-cloud infrastructure (no EKS/RDS/ALB). It still reaches two services over the internet: **AWS
-> Bedrock** for the AI models behind classification/discovery/DLP, and **Resend** for login-code email.
+> managed-cloud infrastructure (no EKS/RDS/ALB). It still reaches two services over the internet: an
+> **LLM** for the AI behind classification/discovery/DLP (AWS Bedrock by default, or your own models
+> through LiteLLM, see [byo-llm.md](byo-llm.md)), and **Resend** for login-code email.
 > To run with **no outbound internet at all**, see [Fully on-prem](#fully-on-prem-no-outbound-internet)
 > below. For the managed-cloud install, see [runbook.md](runbook.md).
 
@@ -24,20 +25,20 @@ Kubernetes), with the managed-cloud services swapped for self-hosted equivalents
 | RDS Postgres | self-hosted Postgres |
 | S3 object storage | Not required |
 | ALB + ACM + Route 53 | ingress-nginx + internal CA cert + internal DNS |
-| Bedrock (AI models) | still AWS Bedrock, reached over the internet (Fully on-prem turns AI off) |
+| Bedrock (AI models) | AWS Bedrock over the internet, or your own models through LiteLLM ([byo-llm.md](byo-llm.md)) |
 | IRSA / workload identity | not needed — no cloud identity binding |
 
 ---
 
 ## Fully on-prem (no outbound internet)
 
-**Self-hosted** still calls out to AWS Bedrock and Resend. To run with no external calls at all — the
+**Self-hosted** still calls out to an LLM and Resend. To run with no external calls at all — the
 **Fully on-prem** posture — follow this same runbook, then cut each remaining egress. Know going in
 that two capabilities depend on those external services and aren't available fully isolated today:
 
 | External call | What it's for | Fully on-prem today |
 |---|---|---|
-| **AWS Bedrock** | AI models behind classification, active discovery, DLP-scan, enrichment | **No substitute.** These features stay off; the proxy still intercepts and regex/allowlist policy rules still match. See [Limitations](#limitations). |
+| **LLM** (Bedrock by default) | AI models behind classification, active discovery, DLP scan, parser fallback | Serve a model inside your network (e.g. vLLM) behind LiteLLM; see [byo-llm.md](byo-llm.md). Without one, these features stay off; the proxy still intercepts and regex/allowlist policy rules still match. |
 | **Resend** | emailing sign-in codes | No self-hosted emailer today, so login codes can't be delivered by mail — read the code from Postgres (see [Troubleshooting](#troubleshooting)). SMTP support is planned. |
 | **GHCR** (images) | pulling platform images | Mirror them to an internal registry and set `global.imageRegistry` to it. |
 | **Oryo public bucket** (sensor binaries) | serving sensor installs | Mirror the binaries and point `SENSOR_DOWNLOAD_BASE_URL` at your mirror (§7). |
@@ -379,11 +380,12 @@ is a full step-by-step. Two platform env vars control this flow:
 
 ## Limitations (today)
 
-- **AI features need AWS Bedrock, reached over the internet.** Even self-hosted, auto-classification,
-  active discovery, DLP scan, parser fallback, and enrichment call AWS Bedrock — there's **no on-prem
-  model substitute yet**. If Bedrock is unreachable (or you're running [Fully on-prem](#fully-on-prem-no-outbound-internet)),
-  they degrade silently: the install succeeds and regex/allowlist rules still match, but model-driven
-  features stop producing output. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features).
+- **AI features need an LLM.** Auto-classification, active discovery, DLP scan, and parser fallback
+  call AWS Bedrock over the internet, or your own models through LiteLLM ([byo-llm.md](byo-llm.md)).
+  [Fully on-prem](#fully-on-prem-no-outbound-internet) needs a model you serve inside your network.
+  Small self-hosted models may get answers wrong more often than the defaults. If the LLM is
+  unreachable, these features degrade silently: the install succeeds and regex/allowlist rules still
+  match, but model-driven features stop producing output. See [runbook.md → AI-dependent features](runbook.md#ai-dependent-features).
 - **PII scanning is the exception.** The model ships inside the `inference` image and makes no
   external calls, so it works fully on-prem. It needs an amd64 node with an NVIDIA GPU, the driver on
   the host, the NVIDIA device plugin, and the label and taint from [inference-gpu.md](inference-gpu.md).

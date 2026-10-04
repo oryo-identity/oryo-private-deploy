@@ -71,7 +71,7 @@ Optional in-cluster service behind the PII scan policy function. It detects PII 
 
 ### Fail-open (PII scan)
 
-If the inference service is disabled, still loading, or unreachable, the gateway logs `pii_scan skipped, request allowed (fail-open)` and lets the request through. Other policy rules on the same request still apply. This is the same approach as [Bedrock-dependent features](runbook.md#bedrock-dependent-features) degrading silently.
+If the inference service is disabled, still loading, or unreachable, the gateway logs `pii_scan skipped, request allowed (fail-open)` and lets the request through. Other policy rules on the same request still apply. This is the same approach as [AI-dependent features](runbook.md#ai-dependent-features) degrading silently.
 
 ---
 

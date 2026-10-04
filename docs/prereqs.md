@@ -33,6 +33,8 @@ Put the name in `values.yaml` → `global.env.DEFAULT_BUCKET`.
 
 ## 2. IAM policy + role (IRSA for S3 + Bedrock)
 
+> Bringing your own LLM ([byo-llm.md](byo-llm.md))? Drop the Bedrock statement from §2a and skip §5.
+
 The pods assume an IAM role via IRSA. You create the role. The Helm chart creates the matching k8s ServiceAccount and annotates it with the role ARN.
 
 ### 2a. Permission policy (S3 + Bedrock)
@@ -202,7 +204,7 @@ EOF
 
 Bedrock foundation models are opt-in per account, per region, separate from the IAM grant in §2. Without it, agent calls fail with `AccessDeniedException` even when IAM is correct.
 
-Several Oryo features call Bedrock from the gateway and workers (auto-classification of prompts and tool uses, active discovery of new LLM endpoints, the DLP policy function, the parser fallback, enrichment). They degrade silently if model access is missing: installs still succeed, the proxy still intercepts, and policies still match on regex/allowlist rules, but auto-tagging, discovery, and the DLP policy stop working. See [runbook.md → Bedrock-dependent features](runbook.md#bedrock-dependent-features) for the per-feature breakdown.
+Several Oryo features call Bedrock from the gateway and workers (auto-classification of prompts and tool uses, active discovery of new LLM endpoints, the DLP policy function, the parser fallback, enrichment). They degrade silently if model access is missing: installs still succeed, the proxy still intercepts, and policies still match on regex/allowlist rules, but auto-tagging, discovery, and the DLP policy stop working. See [runbook.md → AI-dependent features](runbook.md#ai-dependent-features) for the per-feature breakdown.
 
 Models to enable (both must be on in `<REGION>`):
 

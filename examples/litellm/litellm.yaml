@@ -1,0 +1,53 @@
+# LiteLLM proxy for docs/byo-llm.md. Needs Secret litellm-secrets and ConfigMap litellm-config first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  labels: { app: litellm }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: litellm }
+  template:
+    metadata:
+      labels: { app: litellm }
+    spec:
+      serviceAccountName: __SERVICE_ACCOUNT__
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:v1.103.1
+          args: ['--config', '/app/config.yaml', '--port', '4000']
+          # no runAsNonRoot: the image runs as root
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            seccompProfile: { type: RuntimeDefault }
+          ports:
+            - { name: http, containerPort: 4000 }
+          envFrom:
+            - secretRef: { name: litellm-secrets }
+          volumeMounts:
+            - { name: config, mountPath: /app/config.yaml, subPath: config.yaml }
+          readinessProbe:
+            httpGet: { path: /health/readiness, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health/liveliness, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 1Gi }
+      volumes:
+        - name: config
+          configMap: { name: litellm-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+spec:
+  selector: { app: litellm }
+  ports:
+    - { name: http, port: 4000, targetPort: http }

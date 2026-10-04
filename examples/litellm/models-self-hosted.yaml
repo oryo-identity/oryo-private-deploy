@@ -1,0 +1,10 @@
+# secret: LITELLM_MASTER_KEY only
+model_list:
+  - model_name: oryo-default
+    litellm_params:
+      model: hosted_vllm/<your-model-name>
+      api_base: http://<your-vllm-service>:8000/v1
+litellm_settings:
+  drop_params: true
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
