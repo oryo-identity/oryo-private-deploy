@@ -4,7 +4,7 @@ Oryo's AI features call an LLM. That covers prompt and tool classification, DLP 
 
 Use this guide when you'd rather use your own models: Azure OpenAI, Google Vertex AI, the Anthropic API, or a model you host yourself. Oryo then sends every LLM call to a [LiteLLM](https://github.com/BerriAI/litellm) proxy that you run next to the chart. LiteLLM translates each call for your provider. You need no AWS account.
 
-> Requires chart version **TODO (first release with platform LiteLLM support)** or later.
+> Requires chart version **0.1.20** or later.
 
 ## How it fits
 
@@ -135,7 +135,13 @@ Other settings, only if you need them:
 
 ## 6. Check it end to end
 
-TODO: the self-check (`node llm-check.cjs` in a gateway pod) ships in a later release. Until then, check that real traffic gets classified. After a few prompts through a sensor, LiteLLM's log shows `POST /v1/chat/completions ... 200`, and this prints nothing:
+Run the self-check in a gateway pod. It sends known examples through each agent and fails if any answer is wrong or an agent falls back to its default:
+
+```bash
+kubectl -n <NS> exec deploy/oryo-oryo-platform-gateway -- node llm-check.cjs
+```
+
+Expect `All checks passed`. Then send a few prompts through a sensor. LiteLLM's log shows `POST /v1/chat/completions ... 200`, and this prints nothing:
 
 ```bash
 for p in $(kubectl -n <NS> get pods -o name | grep -E 'gateway|workers|dashboard'); do
