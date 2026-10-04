@@ -13,9 +13,9 @@ counterpart.
 
 | Profile | Runs on | External calls | Guide |
 |---|---|---|---|
-| **Cloud** | your cloud account (AWS / Azure / GCP), managed Kubernetes + managed services | AI (Bedrock), login email (Resend) | this runbook |
-| **Self-hosted** | your own Kubernetes on your own hardware (Hyper-V, vSphere, bare metal) | AI (Bedrock) + login email (Resend), over the internet | [on-prem-runbook.md](on-prem-runbook.md) |
-| **Fully on-prem** | your own hardware, **no outbound internet** | none — AI features (Bedrock-dependent) are off in this mode today; email via your SMTP | [on-prem-runbook.md](on-prem-runbook.md) |
+| **Cloud** | your cloud account (AWS / Azure / GCP), managed Kubernetes + managed services | AI (Bedrock, or your own models), login email (Resend) | this runbook |
+| **Self-hosted** | your own Kubernetes on your own hardware (Hyper-V, vSphere, bare metal) | AI (Bedrock, or your own models) + login email (Resend), over the internet | [on-prem-runbook.md](on-prem-runbook.md) |
+| **Fully on-prem** | your own hardware, **no outbound internet** | none — AI features need a model you host inside your network (see [byo-llm.md](byo-llm.md)); email via your SMTP | [on-prem-runbook.md](on-prem-runbook.md) |
 
 ## Cloud service equivalents
 
@@ -31,12 +31,12 @@ workload identity, `global.db.*`, `global.ingressClassName`).
 | Ingress + TLS + DNS | ALB + ACM + Route 53 | App Gateway + Key Vault + Azure DNS | GCLB + Google-managed certs + Cloud DNS |
 | Container registry | Oryo's GHCR (all profiles) — mirror to ECR if you prefer | …or ACR | …or Artifact Registry |
 | Pod → cloud identity | IRSA (SA annotation) | Entra Workload Identity (`azure.workload.identity/use` pod label) | GKE Workload Identity (SA annotation) |
-| **AI models** | **AWS Bedrock** | **AWS Bedrock** | **AWS Bedrock** |
+| **AI models** | AWS Bedrock, or your own via LiteLLM | Azure OpenAI via LiteLLM, or AWS Bedrock | Vertex AI via LiteLLM, or AWS Bedrock |
 
-> **Bedrock is the one piece that doesn't substitute.** Oryo's classification, discovery, DLP-scan, and
-> enrichment call AWS Bedrock directly, with no Azure OpenAI / Vertex path today. Every profile — Azure,
-> GCP, or on-prem — needs an AWS account with Bedrock model access reachable, or those AI features stay
-> dark (the rest of the platform installs and runs; see [Bedrock-dependent features](#bedrock-dependent-features)).
+> **AI models:** Oryo's classification, discovery, DLP scan, and parser fallback call AWS Bedrock by
+> default. On Azure, GCP, or on-prem, run LiteLLM next to the chart and point Oryo at it; see
+> [byo-llm.md](byo-llm.md). Without either, those AI features stay off and the rest of the platform
+> installs and runs (see [AI-dependent features](#ai-dependent-features)).
 
 Node architecture is a chart setting (`global.nodeArchitecture`), not an AWS requirement — set it to
 `amd64` if your cluster runs x86 nodes.
@@ -52,7 +52,7 @@ These need to exist before you start. The install kit doesn't create anything in
 | AWS account | With SSO and admin access for the account you'll deploy into. |
 | EKS cluster | Auto Mode recommended. Same AWS account and region as everything else. It must be able to provision arm64 (Graviton) nodes; see [docs/prereqs.md §4](prereqs.md). |
 | S3 bucket, IAM role, subnet tags | You create these ([docs/prereqs.md §1–3](prereqs.md)); `verify.sh` checks them. |
-| Bedrock model access | Per-region opt-in for Claude 3 Haiku and Nova Micro ([docs/prereqs.md §5](prereqs.md)). The install still succeeds without it, but auto-classification, active discovery, and the DLP policy won't work; see [Bedrock-dependent features](#bedrock-dependent-features). |
+| Bedrock model access | Per-region opt-in ([docs/prereqs.md §5](prereqs.md)). Skip it if you [bring your own LLM](byo-llm.md). The install still succeeds without either, but auto-classification, active discovery, and the DLP policy won't work; see [AI-dependent features](#ai-dependent-features). |
 | Postgres database | RDS recommended. Reachable from the cluster VPC on port 5432. The target database must exist (the default `postgres` works); see [docs/prereqs.md §6](prereqs.md). |
 | Domain, Route 53 zone, ACM cert | A Route 53 hosted zone for your domain in the same AWS account, and a wildcard ACM cert for `*.<your-domain>` in the cluster's region, in status `ISSUED`. See [docs/prereqs.md §7](prereqs.md). |
 | Oryo GHCR pull token | Oryo issues a read-only token for `ghcr.io/oryo-identity`. Store it as a `docker-registry` secret (`ghcr-pull`) and set `global.imagePullSecrets`. Contact your Oryo rep if you don't have one yet. |
@@ -178,7 +178,7 @@ Every provider endpoint the platform calls is env-driven with a commercial-cloud
 | `MICROSOFT_ARM` | `https://management.azure.com` | Azure Government: `https://management.usgovcloudapi.net`. |
 | `MICROSOFT_COGNITIVE_SUFFIX` | `cognitiveservices.azure.com` | Azure Government: `cognitiveservices.azure.us`. |
 | `MICROSOFT_AI_FOUNDRY` | `https://ai.azure.com` | Your cloud's AI Foundry endpoint. |
-| `DEFAULT_LLM` | Claude 3 Haiku (`anthropic.claude-3-haiku-20240307-v1:0`) | Your partition doesn't serve that model ID — set a model or inference-profile ID enabled in your account (GovCloud profiles carry a `us-gov.` prefix). |
+| `DEFAULT_LLM` | Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) | Your partition doesn't serve that model ID — set a model or inference-profile ID enabled in your account (GovCloud profiles carry a `us-gov.` prefix). |
 
 The endpoint URLs are validated by shape only (must be well-formed URLs), so custom/sovereign clouds beyond the examples above work too.
 
@@ -496,13 +496,13 @@ Standard AWS, Kubernetes, and Helm gotchas (wrong-account SSO, ACM stuck in `PEN
 - Don't install the standalone `aws-load-balancer-controller`. Auto Mode ships its own ALB controller. The standalone one crashes with `ec2imds GetMetadata` timeouts and fights it for ingress reconciliation. The chart's `IngressClass` already routes to the built-in controller.
 - The `group.name` ingress annotation doesn't actually merge ALBs. The chart sets `alb.ingress.kubernetes.io/group.name: oryo` to put all 3 ingresses on one ALB, but Auto Mode currently provisions one per ingress. It works, just at slightly higher cost.
 - A `dbInit` hook failure rolls back the install, and the Job is cleaned up automatically, so the logs are gone afterward. Either stream `kubectl -n <NS> logs job/oryo-oryo-platform-db-init -f` during the install, or use `--no-hooks` to debug the rest separately and run dbInit by hand.
-- Bedrock failures degrade silently. Without model access or IRSA Bedrock permissions, classification, active discovery, DLP, parser fallback, and the enricher quietly stop producing output. The install still succeeds, and regex/allowlist rules still match. See [Bedrock-dependent features](#bedrock-dependent-features) for the per-feature breakdown and how to tell a missing IAM grant from missing model access.
+- LLM failures degrade silently. Without model access or IRSA Bedrock permissions, or with LiteLLM unreachable, classification, active discovery, DLP, and parser fallback quietly stop producing output. The install still succeeds, and regex/allowlist rules still match. See [AI-dependent features](#ai-dependent-features) for the per-feature breakdown and how to tell a missing IAM grant from missing model access.
 
-### Bedrock-dependent features
+### AI-dependent features
 
-Several gateway and worker code paths call Bedrock (Claude 3 Haiku for classification, discovery, DLP, and parser fallback; Nova Micro for enrichment). The platform is built to degrade silently if Bedrock is unreachable: the install succeeds, the proxy intercepts, and regex/allowlist policy rules still match. What stops working:
+Several gateway and worker code paths call an LLM: Bedrock by default, or your LiteLLM proxy when `LLM_PROVIDER` is `litellm` ([byo-llm.md](byo-llm.md)). The platform is built to degrade silently if the LLM is unreachable: the install succeeds, the proxy intercepts, and regex/allowlist policy rules still match. What stops working:
 
-| Surface | When Bedrock is missing |
+| Surface | When the LLM is unreachable |
 |---|---|
 | DLP policy function | Returns `undefined` with a warning log. "DLP scan" rules never trigger; other policy rules are unaffected. |
 | Gateway active discovery (`POST /active-discovery`, `/inference-discovery`) | Returns 5xx with `AccessDeniedException`. New LLM endpoints aren't auto-detected; you can still add interception rules by hand. |
@@ -512,7 +512,7 @@ Several gateway and worker code paths call Bedrock (Claude 3 Haiku for classific
 
 The PII scan policy function is not on this list. It does not use Bedrock. It runs on the in-cluster [GPU inference service](#gpu-inference-service-for-pii-scanning-optional) and also fails open.
 
-Two failure modes show up the same way in the dashboard (tags and discovery both go missing) but they have different causes:
+On Bedrock, two failure modes show up the same way in the dashboard (tags and discovery both go missing) but they have different causes. For LiteLLM, see [byo-llm.md → Troubleshooting](byo-llm.md#troubleshooting).
 - IAM: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel`. Fix the IRSA policy ([docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa-for-s3--bedrock)).
 - Model access: the same call returns `AccessDeniedException: You don't have access to the model with the specified model ID`. Enable model access in the Bedrock console ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
 

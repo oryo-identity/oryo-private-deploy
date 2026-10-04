@@ -4,13 +4,14 @@ Deploy Oryo into infrastructure you control. Three profiles:
 
 | Profile | Runs on | External calls | Guide |
 |---|---|---|---|
-| **Cloud** | your cloud account (AWS / Azure / GCP), managed Kubernetes + services | AI (Bedrock), login email (Resend) | [docs/runbook.md](docs/runbook.md) |
-| **Self-hosted** | your own Kubernetes on your own hardware (Hyper-V, vSphere, bare metal) | AI (Bedrock) + login email (Resend), over the internet | [docs/on-prem-runbook.md](docs/on-prem-runbook.md) |
-| **Fully on-prem** | your own hardware, **no outbound internet** | none — AI features (Bedrock-dependent) are off in this mode today; email via your SMTP | [docs/on-prem-runbook.md](docs/on-prem-runbook.md#fully-on-prem-no-outbound-internet) |
+| **Cloud** | your cloud account (AWS / Azure / GCP), managed Kubernetes + services | AI (Bedrock, or your own models), login email (Resend) | [docs/runbook.md](docs/runbook.md) |
+| **Self-hosted** | your own Kubernetes on your own hardware (Hyper-V, vSphere, bare metal) | AI (Bedrock, or your own models) + login email (Resend), over the internet | [docs/on-prem-runbook.md](docs/on-prem-runbook.md) |
+| **Fully on-prem** | your own hardware, **no outbound internet** | none — AI features need a model you host inside your network (see [docs/byo-llm.md](docs/byo-llm.md)); email via your SMTP | [docs/on-prem-runbook.md](docs/on-prem-runbook.md#fully-on-prem-no-outbound-internet) |
 
 The **Cloud** profile below is written end-to-end for AWS (EKS) as a concrete reference; the platform
-runs on any conformant Kubernetes. The one piece that never substitutes is **AWS Bedrock** — every
-profile needs it reachable for AI features, or they stay off.
+runs on any conformant Kubernetes. AI features use **AWS Bedrock** by default. To use Azure OpenAI,
+Vertex AI, the Anthropic API, or a model you host, run LiteLLM next to the chart; see
+[docs/byo-llm.md](docs/byo-llm.md).
 
 > Status: early. The install path works end-to-end but is still being hardened across different customer environments. Expect changes before v1.0.
 
@@ -26,6 +27,7 @@ The chart can also run the optional GPU inference service for in-cluster PII and
 oryo-private-deploy/
 ├── oryo-platform/        ← the Helm chart (Chart.yaml, values.yaml, templates/)
 ├── scripts/verify.sh      ← preflight verifier (creates nothing in AWS)
+├── examples/litellm/     ← LiteLLM Deployment + model lists for docs/byo-llm.md
 ├── docs/
 │   ├── prereqs.md        ← Cloud (AWS) prerequisites you provision before install
 │   ├── runbook.md        ← Cloud install: end-to-end steps + gotchas
@@ -33,6 +35,7 @@ oryo-private-deploy/
 │   ├── onprem-deploy-guide.md ← Self-hosted step-by-step walkthrough (Hyper-V)
 │   ├── intune-deployment.md  ← Windows fleet sensor install via Microsoft Intune
 │   ├── inference-gpu.md      ← optional GPU service for PII scanning
+│   ├── byo-llm.md            ← use your own models instead of Bedrock, through LiteLLM
 │   └── glossary.md       ← terms + concepts
 ├── .env.example          ← verify.sh inputs
 └── LICENSE.md
@@ -93,10 +96,10 @@ flowchart LR
 - An ACM certificate for `*.<your-domain>` in the same region as the cluster (terminates HTTPS at the ALBs)
 - The AWS-side resources in [docs/prereqs.md](docs/prereqs.md):
     - S3 bucket
-    - IAM policy + IRSA role (S3 + Bedrock)
+    - IAM policy + IRSA role (S3, plus Bedrock unless you [bring your own LLM](docs/byo-llm.md))
     - public-subnet tags
     - dedicated arm64 NodePool
-    - Bedrock model access (Claude 3 Haiku + Nova Micro)
+    - Bedrock model access (skip if you [bring your own LLM](docs/byo-llm.md))
     - optional: one NVIDIA GPU node for PII scanning ([docs/inference-gpu.md](docs/inference-gpu.md))
 - An Oryo-issued GHCR pull token (`read:packages` on `ghcr.io/oryo-identity`), stored as a `docker-registry` secret. Contact your Oryo rep if you don't have one yet.
 
