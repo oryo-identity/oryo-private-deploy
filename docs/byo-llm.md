@@ -22,16 +22,20 @@ Oryo asks for two model names, and LiteLLM maps each one to a real model:
 
 If you set only `DEFAULT_LLM`, that one model serves every agent.
 
-## What you set up
+## What has to exist
 
-You write no code. The setup is all configuration:
+You write no code. The setup is all configuration. When you're done, these exist in the Oryo namespace:
 
-1. Model access in your provider.
-2. One Secret and one ConfigMap.
-3. The LiteLLM Deployment and Service, from [`examples/litellm/`](../examples/litellm/).
-4. A few values in the Oryo chart.
+| Object | Contents | Source |
+|---|---|---|
+| Secret `litellm-secrets` | `LITELLM_MASTER_KEY` (a password you make up) plus your provider's keys | Your secrets manager, or step 2 |
+| ConfigMap `litellm-config` | Your model list, as `config.yaml` | A `models-*.yaml` file in [`examples/litellm/`](../examples/litellm/), edited |
+| Deployment and Service `litellm` | The LiteLLM proxy on port 4000 | [`examples/litellm/litellm.yaml`](../examples/litellm/litellm.yaml) |
+| Oryo chart values | `LLM_PROVIDER`, `LITELLM_BASE_URL`, `DEFAULT_LLM`, `SMART_LLM`, and the `LITELLM_API_KEY` secret ref | Your `values.custom.yaml` (step 5) |
 
-For someone who installs things on Kubernetes regularly, this takes about an hour. Getting model access approved inside your cloud often takes longer than the setup.
+Steps 2 and 3 create these with kubectl. If you manage the cluster with Helm, ArgoCD or Terraform, put the same manifest and secret there instead, so a rebuild brings LiteLLM back. Steps 4 and 6 are checks and use kubectl either way.
+
+This takes about an hour for someone who installs things on Kubernetes regularly. Getting model access approved inside your cloud often takes longer than the setup itself.
 
 **Already run an LLM gateway** (LiteLLM or another one that speaks the OpenAI format)? Skip to [step 5](#5-point-oryo-at-litellm) and use your gateway's URL, key, and model names.
 
