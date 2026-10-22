@@ -341,14 +341,12 @@ until the extension record is cleared and the extension is activated again.
    information (Intune only fills in the file name): Name `Oryo Sensor`,
    Description `Oryo sensor. Endpoint EDR for AI agents.`, Publisher
    `Oryo Identity, Inc.`, Information URL `https://oryo.io`. Detection rules:
-   included app `io.oryo.app`; Ignore app version: No. Assign as Required
+   included app `io.oryo.app`; Ignore app version: Yes. Assign as Required
    only.
 
-Upgrades: Intune installs the app owned by root, and the app skips its own
-updater (Sparkle) when it cannot write to its own folder, so managed Macs never
-prompt for a password. Ship a new version by replacing the DMG in the app (and
-the mobileconfig in step 3's profile). With Ignore app version set to No,
-Intune reinstalls on every Mac whose version differs.
+Upgrades: managed Macs do not update on their own yet. Intune installs the
+app owned by root, and the app's built-in updater (Sparkle) needs an
+administrator password to replace an app owned by root.
 
 Verify one Mac before rolling out to the fleet: `systemextensionsctl list`
 shows both `io.oryo.network-extension` and `io.oryo.security-extension` as
