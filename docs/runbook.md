@@ -52,7 +52,7 @@ These need to exist before you start. The install kit doesn't create anything in
 | AWS account | With SSO and admin access for the account you'll deploy into. |
 | EKS cluster | Auto Mode recommended. Same AWS account and region as everything else. It must be able to provision arm64 (Graviton) nodes; see [docs/prereqs.md §4](prereqs.md). |
 | S3 bucket, IAM role, subnet tags | You create these ([docs/prereqs.md §1–3](prereqs.md)); `verify.sh` checks them. |
-| Bedrock model access | Per-region opt-in ([docs/prereqs.md §5](prereqs.md)). Skip it if you [bring your own LLM](byo-llm.md). The install still succeeds without either, but auto-classification, active discovery, and the DLP policy won't work; see [AI-dependent features](#ai-dependent-features). |
+| Bedrock model access | One-time per AWS account ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-one-time-per-account)). Skip it if you [bring your own LLM](byo-llm.md). The install still succeeds without either, but auto-classification, active discovery, and the DLP policy won't work; see [AI-dependent features](#ai-dependent-features). |
 | Postgres database | RDS recommended. Reachable from the cluster VPC on port 5432. The target database must exist (the default `postgres` works); see [docs/prereqs.md §6](prereqs.md). |
 | Domain, Route 53 zone, ACM cert | A Route 53 hosted zone for your domain in the same AWS account, and a wildcard ACM cert for `*.<your-domain>` in the cluster's region, in status `ISSUED`. See [docs/prereqs.md §7](prereqs.md). |
 | Oryo GHCR pull token | Oryo issues a read-only token for `ghcr.io/oryo-identity`. Store it as a `docker-registry` secret (`ghcr-pull`) and set `global.imagePullSecrets`. Contact your Oryo rep if you don't have one yet. |
@@ -514,12 +514,12 @@ The PII scan policy function is not on this list. It does not use Bedrock. It ru
 
 On Bedrock, two failure modes show up the same way in the dashboard (tags and discovery both go missing) but they have different causes. For LiteLLM, see [byo-llm.md → Troubleshooting](byo-llm.md#troubleshooting).
 - IAM: pod-side AWS calls return `AccessDeniedException: User is not authorized to perform: bedrock:InvokeModel`. Fix the IRSA policy ([docs/prereqs.md §2a](prereqs.md#2-iam-policy--role-irsa-for-s3--bedrock)).
-- Model access: the same call returns `AccessDeniedException: You don't have access to the model with the specified model ID`. Enable model access in the Bedrock console ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-per-region-opt-in)).
+- Model access: the same call returns `AccessDeniedException: You don't have access to the model with the specified model ID`. Complete model access ([docs/prereqs.md §5](prereqs.md#5-bedrock-model-access-one-time-per-account)).
 
 Quick check from inside the cluster:
 
 ```bash
 kubectl -n <NS> exec deploy/oryo-gateway -- env | grep -E 'AWS_REGION|AWS_ROLE_ARN'
-# AWS_REGION should match a region where Haiku 3 + Nova Micro are enabled.
+# AWS_REGION should be a region that serves the DEFAULT_LLM and SMART_LLM models (prereqs §5).
 # AWS_ROLE_ARN should be the IRSA role you created in prereqs §2.
 ```

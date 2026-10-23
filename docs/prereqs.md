@@ -39,7 +39,16 @@ The pods assume an IAM role via IRSA. You create the role. The Helm chart create
 
 ### 2a. Permission policy (S3 + Bedrock)
 
-Two statements: one for the object-storage bucket, one for the Bedrock foundation models the agents call. The Bedrock action covers the `Converse` API used by every agent (`anthropic.claude-3-haiku-20240307-v1:0` and `amazon.nova-micro-v1:0`). See §5 for enabling model access in your account, which is separate from the IAM grant.
+Two statements: one for the object-storage bucket, one for the Bedrock models the agents call. By default the agents call two US cross-region inference profiles:
+
+- `us.anthropic.claude-haiku-4-5-20251001-v1:0` (Claude Haiku 4.5) for every agent. Set `DEFAULT_LLM` to change it.
+- `us.anthropic.claude-opus-5` (Claude Opus 5) for the inference validator, which judges newly discovered AI traffic. Set `SMART_LLM` to change it.
+
+An inference profile is a model ID that Bedrock routes to any of several regions. Calling one needs two grants: the profile itself in `<REGION>`, and the underlying foundation model in every region the profile can route to. From `us-east-1`, `us-east-2` or `us-west-2`, these profiles route to those same three regions. From `us-west-1` or Canada they also route to the source region. The policy below uses `*` for the foundation-model region so it covers every case. `bedrock:InvokeModel` also authorizes the `Converse` API the agents use.
+
+If you set `DEFAULT_LLM` or `SMART_LLM`, grant those IDs instead. If your cluster isn't in a US or Canada region, the `us.` profiles can't be called from it. Pick the matching profile for your geography (e.g. `eu.anthropic.claude-haiku-4-5-20251001-v1:0`) or point `global.env.AWS_REGION` at a US region.
+
+See §5 for model access in your account, which is separate from the IAM grant.
 
 ```bash
 cat > /tmp/oryo-workload-policy.json <<EOF
@@ -56,10 +65,12 @@ cat > /tmp/oryo-workload-policy.json <<EOF
     },
     {
       "Effect": "Allow",
-      "Action": ["bedrock:InvokeModel", "bedrock:Converse"],
+      "Action": ["bedrock:InvokeModel"],
       "Resource": [
-        "arn:aws:bedrock:<REGION>::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
-        "arn:aws:bedrock:<REGION>::foundation-model/amazon.nova-micro-v1:0"
+        "arn:aws:bedrock:<REGION>:<ACCOUNT_ID>:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+        "arn:aws:bedrock:<REGION>:<ACCOUNT_ID>:inference-profile/us.anthropic.claude-opus-5",
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-5"
       ]
     }
   ]
@@ -200,32 +211,48 @@ EOF
 
 ---
 
-## 5. Bedrock model access (per-region opt-in)
+## 5. Bedrock model access (one-time per account)
 
-Bedrock foundation models are opt-in per account, per region, separate from the IAM grant in §2. Without it, agent calls fail with `AccessDeniedException` even when IAM is correct.
+Bedrock model access is separate from the IAM grant in §2. Without it, agent calls fail with `AccessDeniedException` even when IAM is correct.
 
 Several Oryo features call Bedrock from the gateway and workers (auto-classification of prompts and tool uses, active discovery of new LLM endpoints, the DLP policy function, the parser fallback, enrichment). They degrade silently if model access is missing: installs still succeed, the proxy still intercepts, and policies still match on regex/allowlist rules, but auto-tagging, discovery, and the DLP policy stop working. See [runbook.md → AI-dependent features](runbook.md#ai-dependent-features) for the per-feature breakdown.
 
-Models to enable (both must be on in `<REGION>`):
+Models the agents call by default (both must work from `<REGION>`):
 
-| Model | ID |
-|---|---|
-| Anthropic Claude 3 Haiku | `anthropic.claude-3-haiku-20240307-v1:0` |
-| Amazon Nova Micro | `amazon.nova-micro-v1:0` |
+| Model | Inference profile ID | Foundation model ID | Override with |
+|---|---|---|---|
+| Anthropic Claude Haiku 4.5 | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `anthropic.claude-haiku-4-5-20251001-v1:0` | `DEFAULT_LLM` |
+| Anthropic Claude Opus 5 | `us.anthropic.claude-opus-5` | `anthropic.claude-opus-5` | `SMART_LLM` |
 
-Enable in the console: Bedrock → Model access in `<REGION>` → request the two models above. Anthropic models require a one-time use-case form (usually approved within minutes). Amazon models are instant.
+If you set `DEFAULT_LLM` or `SMART_LLM` under `global.env`, enable those models instead.
+
+In commercial AWS regions there is no per-model request to submit. Access takes two one-time steps per AWS account:
+
+1. Submit Anthropic's use-case form. In the Bedrock console, open either model from the Model catalog, or go to the Anthropic provider page, and fill in the form. It's needed once per account, or once in your organization's management account. It's usually approved within minutes.
+2. Make one call to each model as an admin. The first call subscribes the account to the model through AWS Marketplace. That call needs `aws-marketplace:Subscribe` and `aws-marketplace:ViewSubscriptions`, which the Oryo role from §2 doesn't have. After that, the Oryo role can call the model with `bedrock:InvokeModel` alone. Opening each model in the console playground works, or run this as an admin:
+
+```bash
+for m in us.anthropic.claude-haiku-4-5-20251001-v1:0 us.anthropic.claude-opus-5; do
+  aws bedrock-runtime converse --region <REGION> --model-id "$m" \
+    --messages '[{"role":"user","content":[{"text":"ping"}]}]' \
+    --query 'output.message.content[0].text' --output text
+done
+```
+
+Each line should print a short reply. In AWS GovCloud the console's Model access page still applies: enable both models there instead.
 
 Confirm afterwards:
 
 ```bash
-aws bedrock list-foundation-models --region <REGION> \
-  --query 'modelSummaries[?modelId==`anthropic.claude-3-haiku-20240307-v1:0` || modelId==`amazon.nova-micro-v1:0`].[modelId,modelLifecycle.status]' \
-  --output table
+for m in anthropic.claude-haiku-4-5-20251001-v1:0 anthropic.claude-opus-5; do
+  aws bedrock get-foundation-model-availability --region <REGION> --model-id "$m" \
+    --query '[modelId,agreementAvailability.status]' --output text
+done
 ```
 
-Both rows should be `ACTIVE`. If a row is missing, the model isn't available in `<REGION>`. Pick a Bedrock-supported region, or set `global.env.AWS_REGION` in `values.yaml` to point the agents at a region that has them (IRSA still uses the cluster's STS endpoint; only the Bedrock SDK target moves).
+Both rows should say `AVAILABLE`. `PENDING` means the use-case form is still being processed; calls fail until it clears. If the converse call says the model ID is invalid, the `us.` profiles aren't served from `<REGION>`. Use your geography's profile (see §2a), or set `global.env.AWS_REGION` in `values.yaml` to a US region (IRSA still uses the cluster's STS endpoint; only the Bedrock SDK target moves).
 
-> Note: `list-foundation-models` shows which models exist in the region rather than whether your account has opted in. The real check is a `bedrock-runtime invoke-model` call: if model access is missing you'll get `AccessDeniedException: You don't have access to the model with the specified model ID`. `verify.sh` runs a smoke call against Haiku 3 and reports the result.
+> Note: the two `AccessDeniedException` messages point at different fixes. `User is not authorized to perform: bedrock:InvokeModel` is the IAM policy in §2a. `You don't have access to the model with the specified model ID` is model access in this section.
 
 ---
 
