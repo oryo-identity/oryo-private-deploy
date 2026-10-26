@@ -344,9 +344,10 @@ until the extension record is cleared and the extension is activated again.
    included app `io.oryo.app`; Ignore app version: Yes. Assign as Required
    only.
 
-Upgrades: managed Macs do not update on their own yet. Intune installs the
-app owned by root, and the app's built-in updater (Sparkle) needs an
-administrator password to replace an app owned by root.
+Upgrades: Macs keep Oryo up to date on their own. Every hour the Oryo
+updater runs as root and installs the release your deployment names, with no
+prompt or password. Keep Ignore app version set to Yes so Intune does not
+reinstall over it.
 
 Verify one Mac before rolling out to the fleet: `systemextensionsctl list`
 shows both `io.oryo.network-extension` and `io.oryo.security-extension` as
