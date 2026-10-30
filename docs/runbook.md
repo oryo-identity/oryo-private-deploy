@@ -312,6 +312,8 @@ Download the CA from Settings → Installation → Download CA, add it to your s
 
 > Note: each tenant has its own root CA. If you tear down and reinstall the platform, the CA regenerates, so re-download and re-trust it before testing again.
 
+For Linux servers with no desktop, see [linux-headless-install.md](linux-headless-install.md). For containers on a sensor host, see [docker-containers.md](docker-containers.md). To connect your Entra ID user directory, see [entra-id-integration.md](entra-id-integration.md).
+
 ---
 
 ## Checking your version

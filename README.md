@@ -34,6 +34,9 @@ oryo-private-deploy/
 │   ├── on-prem-runbook.md    ← Self-hosted / Fully-on-prem install reference
 │   ├── onprem-deploy-guide.md ← Self-hosted step-by-step walkthrough (Hyper-V)
 │   ├── intune-deployment.md  ← Windows fleet sensor install via Microsoft Intune
+│   ├── linux-headless-install.md ← sensor install on Linux servers with no desktop
+│   ├── docker-containers.md  ← getting containers to trust the Oryo CA
+│   ├── entra-id-integration.md ← connect your Entra ID user directory
 │   ├── inference-gpu.md      ← optional GPU service for PII scanning
 │   ├── byo-llm.md            ← use your own models instead of Bedrock, through LiteLLM
 │   └── glossary.md       ← terms + concepts
