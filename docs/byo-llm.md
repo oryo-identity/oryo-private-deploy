@@ -149,6 +149,20 @@ for p in $(kubectl -n <NS> get pods -o name | grep -E 'gateway|workers|dashboard
 done
 ```
 
+## Upgrading LiteLLM
+
+[`examples/litellm/litellm.yaml`](../examples/litellm/litellm.yaml) pins one LiteLLM image tag. Before each Oryo release, we run the step 6 self-check against the newest LiteLLM release and move the pin when it passes. To upgrade, apply the manifest from the new Oryo release, then run the self-check again:
+
+```bash
+sed "s/__SERVICE_ACCOUNT__/$SA/" examples/litellm/litellm.yaml | kubectl -n <NS> apply -f -
+kubectl -n <NS> rollout status deploy/litellm --timeout 5m
+kubectl -n <NS> exec deploy/oryo-oryo-platform-gateway -- node llm-check.cjs
+```
+
+Your model list and secret are separate objects, so this keeps them. If you keep your own copy of the manifest, change only its `image:` line. If you copy images into your own registry, copy the new tag first.
+
+You can also pick a newer tag before we do, for example to get a fix. Take a plain `vX.Y.Z` tag from [LiteLLM's releases](https://github.com/BerriAI/litellm/releases), not one ending in `-rc` or `-dev`. Read the release notes between your tag and the new one for changes to the config file. Then set the `image:` line, apply, and check as above. Also run the step 6 log check after a few sensor prompts. If either check fails, put the old tag back and apply again, then tell us which tag failed.
+
 ---
 
 ## Troubleshooting

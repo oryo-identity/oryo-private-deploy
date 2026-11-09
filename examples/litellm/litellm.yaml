@@ -1,4 +1,5 @@
 # LiteLLM proxy for docs/byo-llm.md. Needs Secret litellm-secrets and ConfigMap litellm-config first.
+# Image is the tag the self-check passed against; to upgrade see docs/byo-llm.md "Upgrading LiteLLM".
 apiVersion: apps/v1
 kind: Deployment
 metadata:
