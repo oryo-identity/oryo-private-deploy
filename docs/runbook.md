@@ -363,7 +363,7 @@ helm rollback oryo --namespace <NAMESPACE>
 
 ## Secret rotation
 
-The chart consumes 6 Kubernetes secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`), plus the optional `oryo-entra-app-secret` when the [Microsoft Purview DLP integration](#microsoft-purview-dlp-integration-optional) is enabled. Rotating them in production works differently depending on which one, and there are a few Oryo-specific things to watch for. Coordinate the actual key delivery with your secrets store (Vault, AWS Secrets Manager, ESO, etc.). The steps below are what the chart expects.
+The chart consumes 6 Kubernetes secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`), plus the optional `oryo-entra-app-secret` when the [Microsoft Purview DLP integration](#microsoft-purview-dlp-integration-optional) is enabled and `oryo-dashboard-google-client-secret` when [Google sign-in](#google-sign-in-optional) is enabled. Rotating them in production works differently depending on which one, and there are a few Oryo-specific things to watch for. Coordinate the actual key delivery with your secrets store (Vault, AWS Secrets Manager, ESO, etc.). The steps below are what the chart expects.
 
 ### `oryo-session-secret`
 
@@ -417,6 +417,50 @@ kubectl -n $NS run psql-debug --rm -it --restart=Never --image=postgres:15 \
 The pod is ephemeral (`--rm`) and never writes the password to disk. Quit with `\q` and the pod is gone.
 
 > Note: Kubernetes secrets are only base64-encoded in etcd by default, so they aren't encrypted at rest. For production, enable EKS envelope encryption with KMS (see [AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/enable-kms.html)). Without it, anyone with `secrets/get` RBAC can read the plaintext.
+
+---
+
+## Google sign-in (optional)
+
+By default users sign in with an emailed code. The dashboard also shows **Continue with Google**, but only when it has a Google OAuth client ID and secret. The chart ships both empty, so the button stays hidden.
+
+You need your own OAuth client. Google only sends users back to the redirect URLs registered on the client, and Oryo's client lists only Oryo's hosts.
+
+### 1. Create the OAuth client (your Google Cloud admin)
+
+1. In Google Cloud Console, go to **APIs & Services → OAuth consent screen**. Set it up as **Internal** so that only accounts in your Google Workspace can sign in.
+2. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**. Pick **Web application**.
+3. Under **Authorized redirect URIs**, add `https://app.<DOMAIN>/login/google/callback`.
+4. Copy the client ID and client secret.
+
+The dashboard asks only for `openid`, `email`, and `profile`.
+
+### 2. Wire it into the deployment
+
+Create the secret:
+
+```bash
+kubectl -n <NAMESPACE> create secret generic oryo-dashboard-google-client-secret \
+  --from-literal=value='<client-secret>'
+```
+
+Then in `values.custom.yaml`:
+
+```yaml
+dashboard:
+  env:
+    DASHBOARD_GOOGLE_CLIENT_ID: '<client-id>.apps.googleusercontent.com'
+  externalSecrets:
+    DASHBOARD_GOOGLE_CLIENT_SECRET:
+      secretName: oryo-dashboard-google-client-secret
+      key: value
+```
+
+Run `helm upgrade`. The `RESEND_API_KEY` entry from the chart's defaults stays in place, because Helm merges this map with the defaults. Email codes still work alongside Google.
+
+The dashboard turns down a Google account that isn't part of a Google Workspace, such as a personal `@gmail.com`. A Workspace user who signs in for the first time gets an account the same way they would with an email code.
+
+Rotation: create a new secret on the OAuth client, update `oryo-dashboard-google-client-secret`, and restart the dashboard pods. After that, delete the old secret in Google Cloud Console.
 
 ---
 
