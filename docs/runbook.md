@@ -422,29 +422,12 @@ The pod is ephemeral (`--rm`) and never writes the password to disk. Quit with `
 
 ## Google sign-in (optional)
 
-By default users sign in with an emailed code. The dashboard also shows **Continue with Google**, but only when it has a Google OAuth client ID and secret. The chart ships both empty, so the button stays hidden.
-
-You need your own OAuth client. Google only sends users back to the redirect URLs registered on the client, and Oryo's client lists only Oryo's hosts.
-
-### 1. Create the OAuth client (your Google Cloud admin)
-
-1. In Google Cloud Console, go to **APIs & Services → OAuth consent screen**. Set it up as **Internal** so that only accounts in your Google Workspace can sign in.
-2. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**. Pick **Web application**.
-3. Under **Authorized redirect URIs**, add `https://app.<DOMAIN>/login/google/callback`.
-4. Copy the client ID and client secret.
-
-The dashboard asks only for `openid`, `email`, and `profile`.
-
-### 2. Wire it into the deployment
-
-Create the secret:
+The dashboard supports Sign in with Google. Create a Google OAuth client (Web application) with redirect URI `https://app.<DOMAIN>/login/google/callback`, store its secret, and set:
 
 ```bash
 kubectl -n <NAMESPACE> create secret generic oryo-dashboard-google-client-secret \
   --from-literal=value='<client-secret>'
 ```
-
-Then in `values.custom.yaml`:
 
 ```yaml
 dashboard:
@@ -456,11 +439,7 @@ dashboard:
       key: value
 ```
 
-Run `helm upgrade`. The `RESEND_API_KEY` entry from the chart's defaults stays in place, because Helm merges this map with the defaults. Email codes still work alongside Google.
-
-The dashboard turns down a Google account that isn't part of a Google Workspace, such as a personal `@gmail.com`. A Workspace user who signs in for the first time gets an account the same way they would with an email code.
-
-Rotation: create a new secret on the OAuth client, update `oryo-dashboard-google-client-secret`, and restart the dashboard pods. After that, delete the old secret in Google Cloud Console.
+Only Google Workspace accounts can sign in. Email codes keep working.
 
 ---
 
