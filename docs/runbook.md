@@ -363,7 +363,7 @@ helm rollback oryo --namespace <NAMESPACE>
 
 ## Secret rotation
 
-The chart consumes 6 Kubernetes secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`), plus the optional `oryo-entra-app-secret` when the [Microsoft Purview DLP integration](#microsoft-purview-dlp-integration-optional) is enabled. Rotating them in production works differently depending on which one, and there are a few Oryo-specific things to watch for. Coordinate the actual key delivery with your secrets store (Vault, AWS Secrets Manager, ESO, etc.). The steps below are what the chart expects.
+The chart consumes 6 Kubernetes secrets (`oryo-session-secret`, `oryo-db-admin`, `oryo-db-{dashboard,gateway,worker}`, `oryo-resend-api-key`), plus the optional `oryo-entra-app-secret` when the [Microsoft Purview DLP integration](#microsoft-purview-dlp-integration-optional) is enabled and `oryo-dashboard-google-client-secret` when [Google sign-in](#google-sign-in-optional) is enabled. Rotating them in production works differently depending on which one, and there are a few Oryo-specific things to watch for. Coordinate the actual key delivery with your secrets store (Vault, AWS Secrets Manager, ESO, etc.). The steps below are what the chart expects.
 
 ### `oryo-session-secret`
 
@@ -417,6 +417,29 @@ kubectl -n $NS run psql-debug --rm -it --restart=Never --image=postgres:15 \
 The pod is ephemeral (`--rm`) and never writes the password to disk. Quit with `\q` and the pod is gone.
 
 > Note: Kubernetes secrets are only base64-encoded in etcd by default, so they aren't encrypted at rest. For production, enable EKS envelope encryption with KMS (see [AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/enable-kms.html)). Without it, anyone with `secrets/get` RBAC can read the plaintext.
+
+---
+
+## Google sign-in (optional)
+
+The dashboard supports Sign in with Google. Create a Google OAuth client (Web application) with redirect URI `https://app.<DOMAIN>/login/google/callback`, store its secret, and set:
+
+```bash
+kubectl -n <NAMESPACE> create secret generic oryo-dashboard-google-client-secret \
+  --from-literal=value='<client-secret>'
+```
+
+```yaml
+dashboard:
+  env:
+    DASHBOARD_GOOGLE_CLIENT_ID: '<client-id>.apps.googleusercontent.com'
+  externalSecrets:
+    DASHBOARD_GOOGLE_CLIENT_SECRET:
+      secretName: oryo-dashboard-google-client-secret
+      key: value
+```
+
+Only Google Workspace accounts can sign in. Email codes keep working.
 
 ---
 
